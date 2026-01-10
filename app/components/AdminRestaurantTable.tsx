@@ -1,28 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import AdminRestaurantCard from './AdminRestaurantCard';
 
 interface AdminRestaurantTableProps {
   restaurants: Restaurant[];
   onUpdate: (id: number, updates: Partial<Restaurant>) => Promise<void>;
+  initialEditingId?: number | null;
+  onEditComplete?: () => void;
 }
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
-export default function AdminRestaurantTable({ restaurants, onUpdate }: AdminRestaurantTableProps) {
+export default function AdminRestaurantTable({ restaurants, onUpdate, initialEditingId, onEditComplete }: AdminRestaurantTableProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(initialEditingId || null);
+  
+  // Update editingId when initialEditingId changes
+  useEffect(() => {
+    if (initialEditingId !== undefined) {
+      setEditingId(initialEditingId);
+    }
+  }, [initialEditingId]);
 
   // Ensure restaurants is an array
   const restaurantsArray = Array.isArray(restaurants) ? restaurants : [];
 
+  // Helper function to check if restaurant has deals
+  const hasDeals = (restaurant: Restaurant): boolean => {
+    const happyHour = restaurant.happyHour;
+    const weeklySpecials = restaurant.weeklySpecials;
+    const deals = restaurant.deals;
+    const hasEatClubUrl = restaurant.eatClubUrl !== null && restaurant.eatClubUrl !== undefined && restaurant.eatClubUrl !== '';
+    const hasFirstTableUrl = restaurant.firstTableUrl !== null && restaurant.firstTableUrl !== undefined && restaurant.firstTableUrl !== '';
+    
+    return (
+      (happyHour !== null && happyHour !== undefined) ||
+      (weeklySpecials !== null && weeklySpecials !== undefined && Array.isArray(weeklySpecials) && weeklySpecials.length > 0) ||
+      (deals !== null && deals !== undefined && Array.isArray(deals) && deals.length > 0) ||
+      hasEatClubUrl ||
+      hasFirstTableUrl
+    );
+  };
+
   // Filter restaurants based on status
   const filteredRestaurants = restaurantsArray.filter(restaurant => {
     if (statusFilter === 'all') return true;
-    if (statusFilter === 'active') return restaurant.status === 'active';
-    return restaurant.status !== 'active';
+    if (statusFilter === 'active') {
+      // Active: restaurants with deals OR explicitly set to active status
+      return restaurant.status === 'active' || hasDeals(restaurant);
+    }
+    // Inactive: restaurants without deals AND not explicitly active
+    return restaurant.status !== 'active' && !hasDeals(restaurant);
   }).sort((a, b) => {
     // Sort: restaurants with images first, those without images last
     const aHasImages = a.imageUrls !== null && Array.isArray(a.imageUrls) && a.imageUrls.length > 0;
@@ -43,6 +73,9 @@ export default function AdminRestaurantTable({ restaurants, onUpdate }: AdminRes
 
   const handleEditComplete = () => {
     setEditingId(null);
+    if (onEditComplete) {
+      onEditComplete();
+    }
   };
 
   const handleUpdate = async (id: number, updates: Partial<Restaurant>) => {
@@ -96,7 +129,7 @@ export default function AdminRestaurantTable({ restaurants, onUpdate }: AdminRes
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Active ({restaurantsArray.filter(r => r.status === 'active').length})
+            Active ({restaurantsArray.filter(r => r.status === 'active' || hasDeals(r)).length})
           </button>
           <button
             onClick={() => setStatusFilter('inactive')}
@@ -106,7 +139,7 @@ export default function AdminRestaurantTable({ restaurants, onUpdate }: AdminRes
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Inactive ({restaurantsArray.filter(r => r.status !== 'active').length})
+            Inactive ({restaurantsArray.filter(r => r.status !== 'active' && !hasDeals(r)).length})
           </button>
         </div>
         <div className="ml-auto text-sm text-gray-600">

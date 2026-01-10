@@ -60,6 +60,10 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
   const [happyHour, setHappyHour] = useState<HappyHour>({ days: [], hours: '', description: '' }); // Keep for backward compatibility
   const [weeklySpecials, setWeeklySpecials] = useState<WeeklySpecial[]>([]); // Keep for backward compatibility
   const [cuisineOptions, setCuisineOptions] = useState<string[]>([]);
+  const [showCopyDealsModal, setShowCopyDealsModal] = useState(false);
+  const [sourceRestaurants, setSourceRestaurants] = useState<Restaurant[]>([]);
+  const [loadingRestaurants, setLoadingRestaurants] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   
   const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -158,7 +162,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
       openingHours: restaurant.openingHours,
       latitude: restaurant.latitude,
       longitude: restaurant.longitude,
-      status: restaurant.status || 'active',
+      status: restaurant.status || 'inactive',
       overallRating: restaurant.overallRating,
       imageUrls: restaurant.imageUrls,
     });
@@ -572,7 +576,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-1">Status</label>
               <select
-                value={editedData.status || 'active'}
+                value={editedData.status !== undefined ? editedData.status : (restaurant.status || 'inactive')}
                 onChange={(e) => handleChange('status', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -580,6 +584,11 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                 <option value="inactive">Inactive</option>
                 <option value="closed">Closed</option>
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                {editedData.status === 'active' || (!editedData.status && restaurant.status === 'active')
+                  ? '✓ Restaurant will appear on main page (if it has deals)'
+                  : '⚠ Restaurant will NOT appear on main page'}
+              </p>
             </div>
           </div>
 
@@ -601,7 +610,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
           <div className="pt-4 border-t border-gray-200">
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-900">Deals</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -650,8 +659,223 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                 >
                   + Current Deal
                 </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowCopyDealsModal(true);
+                    setLoadingRestaurants(true);
+                    try {
+                      const response = await fetch('/api/restaurants?limit=10000&page=1');
+                      if (response.ok) {
+                        const data = await response.json();
+                        const restaurants = data.restaurants || data;
+                        // Filter out current restaurant
+                        const filtered = restaurants.filter((r: Restaurant) => r.id !== restaurant.id);
+                        setSourceRestaurants(filtered);
+                      }
+                    } catch (error) {
+                      console.error('Error fetching restaurants:', error);
+                      alert('Failed to load restaurants');
+                    } finally {
+                      setLoadingRestaurants(false);
+                    }
+                  }}
+                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                  📋 Copy Deals
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Remove manual deals (Current Deals that are NOT from First Table or EatClub)
+                    const filtered = unifiedDeals.filter(deal => {
+                      if (deal.dealType === 'Current Deal') {
+                        const source = (deal.source || '').toLowerCase();
+                        const title = (deal.title || '').toLowerCase();
+                        // Keep if it's from First Table or EatClub
+                        const isFirstTable = source === 'firsttable' || 
+                                           source === 'first_table' ||
+                                           title.includes('first table');
+                        const isEatClub = source === 'eatclub' || 
+                                        title === 'eatclub deal available' ||
+                                        title === 'EatClub Deal Available';
+                        // Remove if it's NOT from First Table or EatClub (i.e., it's manual)
+                        return isFirstTable || isEatClub;
+                      }
+                      // Keep Happy Hour and Weekly Deals
+                      return true;
+                    });
+                    const removedCount = unifiedDeals.length - filtered.length;
+                    setUnifiedDeals(filtered);
+                    if (removedCount > 0) {
+                      alert(`Removed ${removedCount} manual deal(s)`);
+                    } else {
+                      alert('No manual deals to remove');
+                    }
+                  }}
+                  className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                >
+                  🗑️ Remove Manual Deals
+                </button>
               </div>
             </div>
+            
+            {/* Copy Deals Modal */}
+            {showCopyDealsModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCopyDealsModal(false)}>
+                <div
+                  className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[80vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-xl font-bold mb-4 text-gray-900">Copy Deals from Another Restaurant</h3>
+                  
+                  {loadingRestaurants ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <p className="mt-2 text-gray-600">Loading restaurants...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-2">
+                          Select Source Restaurant:
+                        </label>
+                        <select
+                          value={selectedSourceId || ''}
+                          onChange={(e) => setSelectedSourceId(parseInt(e.target.value) || null)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">-- Select a restaurant --</option>
+                          {sourceRestaurants.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name} {r.suburb ? `(${r.suburb})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {selectedSourceId && (
+                        <div className="mb-4 p-4 bg-gray-50 rounded border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-2">Deals to Copy:</h4>
+                          {(() => {
+                            const sourceRestaurant = sourceRestaurants.find(r => r.id === selectedSourceId);
+                            if (!sourceRestaurant) return <p className="text-gray-600">No restaurant selected</p>;
+                            
+                            const sourceHappyHour = sourceRestaurant.happyHour as { days?: string[]; hours?: string; description?: string } | null;
+                            const sourceWeeklySpecials = sourceRestaurant.weeklySpecials as Array<{ day: string; description: string }> | null;
+                            const sourceDeals = sourceRestaurant.deals as Array<{ title?: string; description?: string; validUntil?: string; source?: string }> | null;
+                            
+                            const dealsToCopy: string[] = [];
+                            if (sourceHappyHour && (sourceHappyHour.description || sourceHappyHour.hours || (sourceHappyHour.days && sourceHappyHour.days.length > 0))) {
+                              dealsToCopy.push(`Happy Hour: ${sourceHappyHour.description || 'No description'}`);
+                            }
+                            if (sourceWeeklySpecials && sourceWeeklySpecials.length > 0) {
+                              dealsToCopy.push(`Weekly Specials: ${sourceWeeklySpecials.length} special(s)`);
+                            }
+                            if (sourceDeals && sourceDeals.length > 0) {
+                              dealsToCopy.push(`Current Deals: ${sourceDeals.length} deal(s)`);
+                            }
+                            
+                            if (dealsToCopy.length === 0) {
+                              return <p className="text-gray-600">No deals found in source restaurant</p>;
+                            }
+                            
+                            return (
+                              <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                                {dealsToCopy.map((deal, idx) => (
+                                  <li key={idx}>{deal}</li>
+                                ))}
+                              </ul>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      
+                      <div className="flex gap-3 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCopyDealsModal(false);
+                            setSelectedSourceId(null);
+                          }}
+                          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedSourceId) {
+                              alert('Please select a source restaurant');
+                              return;
+                            }
+                            
+                            const sourceRestaurant = sourceRestaurants.find(r => r.id === selectedSourceId);
+                            if (!sourceRestaurant) {
+                              alert('Source restaurant not found');
+                              return;
+                            }
+                            
+                            // Convert source restaurant deals to unified format
+                            const dealsToAdd: UnifiedDeal[] = [];
+                            
+                            // Copy Happy Hour
+                            const sourceHappyHour = sourceRestaurant.happyHour as { days?: string[]; hours?: string; description?: string } | null;
+                            if (sourceHappyHour && (sourceHappyHour.description || sourceHappyHour.hours || (sourceHappyHour.days && sourceHappyHour.days.length > 0))) {
+                              dealsToAdd.push({
+                                id: `hh-copy-${Date.now()}-${Math.random()}`,
+                                dealType: 'Happy Hour',
+                                description: sourceHappyHour.description || '',
+                                days: sourceHappyHour.days || [],
+                                hours: sourceHappyHour.hours || '',
+                              });
+                            }
+                            
+                            // Copy Weekly Specials
+                            const sourceWeeklySpecials = sourceRestaurant.weeklySpecials as Array<{ day: string; description: string }> | null;
+                            if (sourceWeeklySpecials && sourceWeeklySpecials.length > 0) {
+                              sourceWeeklySpecials.forEach((special) => {
+                                dealsToAdd.push({
+                                  id: `ws-copy-${Date.now()}-${Math.random()}`,
+                                  dealType: 'Weekly Deal',
+                                  description: special.description || '',
+                                  day: special.day || '',
+                                });
+                              });
+                            }
+                            
+                            // Copy Current Deals
+                            const sourceDeals = sourceRestaurant.deals as Array<{ title?: string; description?: string; validUntil?: string; source?: string }> | null;
+                            if (sourceDeals && sourceDeals.length > 0) {
+                              sourceDeals.forEach((deal) => {
+                                dealsToAdd.push({
+                                  id: `deal-copy-${Date.now()}-${Math.random()}`,
+                                  dealType: 'Current Deal',
+                                  title: deal.title || '',
+                                  description: deal.description || '',
+                                  validUntil: deal.validUntil || null,
+                                  source: deal.source || null,
+                                });
+                              });
+                            }
+                            
+                            // Merge with existing deals
+                            setUnifiedDeals([...unifiedDeals, ...dealsToAdd]);
+                            setShowCopyDealsModal(false);
+                            setSelectedSourceId(null);
+                            alert(`Copied ${dealsToAdd.length} deal(s) from ${sourceRestaurant.name}`);
+                          }}
+                          disabled={!selectedSourceId}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Copy Deals
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             
             {unifiedDeals.length > 0 ? (
               <div className="overflow-x-auto">

@@ -143,7 +143,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
       {/* Deal Type Filters */}
       <div className="mt-4 bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-md border border-white/20">
         <label className="block text-sm font-medium text-gray-800 mb-2">
-          Deal Types <span className="text-xs text-gray-600">(select multiple - AND logic)</span>
+          Deal Types <span className="text-xs text-gray-600">(select multiple - shows restaurants with any selected type)</span>
         </label>
         <div className="flex gap-4 flex-wrap">
           <label className="flex items-center cursor-pointer">

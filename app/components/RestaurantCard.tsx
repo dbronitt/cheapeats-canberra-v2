@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import { isRestaurantOpen } from '@/src/lib/utils';
 import Link from 'next/link';
+import ReportDealModal from './ReportDealModal';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -123,8 +124,12 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const [images, setImages] = useState<string[]>([]);
-  const [removingImage, setRemovingImage] = useState<number | null>(null);
   const [imageLoading, setImageLoading] = useState<boolean>(true);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportingDeal, setReportingDeal] = useState<{
+    dealType: string;
+    dealDescription: string;
+  } | null>(null);
   
   // Initialize images and filter out incorrect ones
   useEffect(() => {
@@ -161,255 +166,12 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
   const openingHours = restaurant.openingHours as Record<string, string> | null;
   const hasOpeningHours = openingHours && typeof openingHours === 'object' && Object.keys(openingHours).length > 0;
   const isOpen = hasOpeningHours ? isRestaurantOpen(openingHours) : null; // null means unknown
-  const rawHappyHour = restaurant.happyHour as { days?: string[]; hours?: string; description?: string } | null;
+  const happyHour = restaurant.happyHour as { days?: string[]; hours?: string; description?: string } | null;
   const weeklySpecials = restaurant.weeklySpecials as Array<{ day: string; description: string }> | null;
   const rawDeals = restaurant.deals as Array<{ title?: string; description?: string; validUntil?: string; source?: string }> | null;
 
-  // Validate if happy hour is actually about drinks (not food deals)
-  const isDrinkDeal = (description: string): boolean => {
-    if (!description) return false;
-    const text = description.toLowerCase();
-    
-    // Keywords that indicate drinks (valid for happy hour)
-    const drinkKeywords = [
-      'beer', 'wine', 'cocktail', 'spirit', 'drink', 'beers', 'wines',
-      'schooner', 'pint', 'glass', 'shot', 'mixed', 'house wine',
-      'tap', 'taps', 'draft', 'bottle', 'jug', 'pot', 'schnapps',
-      'happy hour', 'drinks', 'alcohol', 'bar', 'pub', 'wine bar'
-    ];
-    
-    // Keywords that indicate food (NOT valid for happy hour)
-    const foodKeywords = [
-      'kids meal', 'kid meal', 'children meal', 'free kids', 'kids eat free',
-      'schnitzel', 'schnitty', 'burger', 'pizza', 'pasta', 'taco', 'tacos',
-      'steak', 'roast', 'lunch', 'dinner', 'meal', 'food', 'breakfast',
-      'chicken', 'fish', 'beef', 'pork', 'lamb', 'veggie', 'vegetarian',
-      'salad', 'wings', 'nuggets', 'sliders', 'sandwich', 'wrap',
-      'curry', 'parma', 'parmigiana', 'risotto', 'soup', 'appetizer',
-      'entree', 'main', 'mains', 'dessert', 'pie', 'cake',
-      'special', 'specials', 'discount', '20% off', 'half-priced', 'half-price',
-      '2 for 1', '2-for-1', 'sirloin', 'chips', 'schnitzels'
-    ];
-    
-    const hasFoodKeywords = foodKeywords.some(keyword => text.includes(keyword));
-    const hasDrinkKeywords = drinkKeywords.some(keyword => text.includes(keyword));
-    
-    // Only consider it a drink deal if it has drink keywords and no food keywords
-    return hasDrinkKeywords && !hasFoodKeywords;
-  };
-
-  // Check if happy hour contains food deals and convert to weekly specials if needed
-  let happyHour = rawHappyHour;
-  let enhancedWeeklySpecials = weeklySpecials ? [...weeklySpecials] : [];
-  let enhancedDeals = rawDeals ? [...rawDeals] : [];
-  
-  try {
-    if (rawHappyHour && rawHappyHour.description) {
-      const description = rawHappyHour.description;
-      if (!isDrinkDeal(description)) {
-        // This is a food deal, not a drink deal - convert to weekly specials or deals
-        console.log('[DEBUG] Happy Hour contains food deals, converting:', description.substring(0, 100));
-        
-        const dayMap: Record<string, string> = {
-          'monday': 'Monday', 'tuesday': 'Tuesday', 'wednesday': 'Wednesday',
-          'thursday': 'Thursday', 'friday': 'Friday', 'saturday': 'Saturday', 'sunday': 'Sunday',
-          'mon': 'Monday', 'tue': 'Tuesday', 'wed': 'Wednesday',
-          'thu': 'Thursday', 'fri': 'Friday', 'sat': 'Saturday', 'sun': 'Sunday'
-        };
-        
-        // Parse day-specific specials from description
-        // Find all day mentions and extract text until next day
-        const dayPattern = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/gi;
-        const matches: Array<{ day: string; text: string; index: number }> = [];
-        
-        // Find all day positions first
-        const dayPositions: Array<{ index: number; day: string; length: number }> = [];
-        let dayMatch;
-        const dayRegex = new RegExp(dayPattern.source, dayPattern.flags);
-        while ((dayMatch = dayRegex.exec(description)) !== null) {
-          dayPositions.push({
-            index: dayMatch.index,
-            day: dayMatch[0],
-            length: dayMatch[0].length
-          });
-        }
-        
-        // Extract text for each day
-        for (let i = 0; i < dayPositions.length; i++) {
-          const currentDay = dayPositions[i];
-          const nextDay = dayPositions[i + 1];
-          const startIndex = currentDay.index + currentDay.length;
-          const endIndex = nextDay ? nextDay.index : description.length;
-          
-          let specialText = description.substring(startIndex, endIndex).trim();
-          specialText = specialText.replace(/^:\s*/, '').trim();
-          specialText = specialText.replace(/\s*\([^)]*\)\s*$/, '').trim();
-          
-          if (specialText && specialText.length > 5) {
-            const dayKey = currentDay.day.toLowerCase();
-            const dayName = dayMap[dayKey] || dayKey.charAt(0).toUpperCase() + dayKey.slice(1);
-            matches.push({
-              day: dayName,
-              text: specialText,
-              index: currentDay.index
-            });
-          }
-        }
-        
-        // Add parsed specials to weekly specials
-        for (const match of matches) {
-          const exists = enhancedWeeklySpecials.some(s => 
-            s.day.toLowerCase() === match.day.toLowerCase() && 
-            s.description.toLowerCase().includes(match.text.substring(0, 30).toLowerCase())
-          );
-          
-          if (!exists) {
-            enhancedWeeklySpecials.push({
-              day: match.day,
-              description: match.text
-            });
-          }
-        }
-        
-        // Always hide happy hour if it contains food deals
-        happyHour = null;
-        
-        // If we couldn't parse into weekly specials, add as a general deal
-        const parsedSpecials = enhancedWeeklySpecials.length > (weeklySpecials?.length || 0);
-        if (!parsedSpecials) {
-          const foodDeal: { title?: string; description?: string; validUntil?: string; source?: string } = {
-            title: 'Special Deal',
-            description: rawHappyHour.description,
-            source: 'Manual'
-          };
-          
-          const dealExists = enhancedDeals.some(d => 
-            d.description?.toLowerCase() === rawHappyHour.description?.toLowerCase()
-          );
-          
-          if (!dealExists) {
-            enhancedDeals.push(foodDeal);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('[DEBUG] Error processing happy hour:', error);
-    // On error, just use the original values
-    happyHour = rawHappyHour;
-    enhancedWeeklySpecials = weeklySpecials ? [...weeklySpecials] : [];
-    enhancedDeals = rawDeals ? [...rawDeals] : [];
-  }
-  
-  // Check Current Deals for day-of-week mentions and move to Weekly Specials
-  try {
-    const dayPattern = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/gi;
-    const dayMap: Record<string, string> = {
-      'monday': 'Monday', 'tuesday': 'Tuesday', 'wednesday': 'Wednesday',
-      'thursday': 'Thursday', 'friday': 'Friday', 'saturday': 'Saturday', 'sunday': 'Sunday',
-      'mon': 'Monday', 'tue': 'Tuesday', 'wed': 'Wednesday',
-      'thu': 'Thursday', 'fri': 'Friday', 'sat': 'Saturday', 'sun': 'Sunday'
-    };
-    
-    const dealsToMove: Array<{ day: string; description: string }> = [];
-    const dealsToKeep: typeof enhancedDeals = [];
-    
-    for (const deal of enhancedDeals) {
-      const title = (deal.title || '').toLowerCase();
-      const description = (deal.description || '').toLowerCase();
-      const fullText = `${title} ${description}`;
-      
-      // Check if deal contains a day of the week
-      const dayMatch = fullText.match(dayPattern);
-      
-      if (dayMatch) {
-        // Extract the day and description
-        const dayKey = dayMatch[0].toLowerCase();
-        const dayName = dayMap[dayKey] || dayKey.charAt(0).toUpperCase() + dayKey.slice(1);
-        
-        // Try to extract the description part (after the day)
-        let dealDescription = '';
-        
-        // If title contains the day, extract description from title and description
-        if (title.includes(dayKey)) {
-          // Remove day from title and combine with description
-          const titleWithoutDay = title.replace(new RegExp(`\\b${dayKey}\\b`, 'gi'), '').trim();
-          const cleanTitle = titleWithoutDay.replace(/^:\s*/, '').replace(/^\s*-\s*/, '').trim();
-          
-          if (deal.description) {
-            // If we have both title (without day) and description, combine them
-            dealDescription = cleanTitle ? `${cleanTitle}: ${deal.description}` : deal.description;
-          } else {
-            // Just use the cleaned title
-            dealDescription = cleanTitle || deal.title || '';
-          }
-        } else {
-          // Day is in description, combine title and description
-          dealDescription = `${deal.title ? deal.title + ': ' : ''}${deal.description || ''}`.trim();
-          // Remove day from description
-          dealDescription = dealDescription.replace(new RegExp(`\\b${dayMatch[0]}\\b\\s*:?\\s*`, 'gi'), '').trim();
-        }
-        
-        // Clean up: remove leading colons, dashes, and extra spaces
-        dealDescription = dealDescription.replace(/^[:-\s]+/, '').trim();
-        
-        if (dealDescription) {
-          dealsToMove.push({
-            day: dayName,
-            description: dealDescription
-          });
-        }
-      } else {
-        // Keep deals that don't have days
-        dealsToKeep.push(deal);
-      }
-    }
-    
-    // Add moved deals to weekly specials (avoid duplicates)
-    for (const movedDeal of dealsToMove) {
-      const exists = enhancedWeeklySpecials.some(s => 
-        s.day.toLowerCase() === movedDeal.day.toLowerCase() && 
-        s.description.toLowerCase().includes(movedDeal.description.substring(0, 50).toLowerCase())
-      );
-      
-      if (!exists) {
-        enhancedWeeklySpecials.push(movedDeal);
-      }
-    }
-    
-    // Update enhancedDeals to only keep deals without days
-    enhancedDeals = dealsToKeep;
-    
-    // Remove duplicates between weekly specials and remaining deals
-    // Check if any weekly special description matches a deal description
-    enhancedDeals = enhancedDeals.filter(deal => {
-      const dealText = `${deal.title || ''} ${deal.description || ''}`.toLowerCase().trim();
-      return !enhancedWeeklySpecials.some(special => {
-        const specialText = `${special.day} ${special.description}`.toLowerCase();
-        // Check if they're similar (one contains the other or vice versa)
-        return dealText.includes(specialText.substring(0, 30)) || specialText.includes(dealText.substring(0, 30));
-      });
-    });
-    
-    // Deduplicate within weekly specials (same day + similar description)
-    const uniqueWeeklySpecials: Array<{ day: string; description: string }> = [];
-    for (const special of enhancedWeeklySpecials) {
-      const exists = uniqueWeeklySpecials.some(existing => {
-        const sameDay = existing.day.toLowerCase() === special.day.toLowerCase();
-        const similarDesc = existing.description.toLowerCase().includes(special.description.substring(0, 30).toLowerCase()) ||
-                           special.description.toLowerCase().includes(existing.description.substring(0, 30).toLowerCase());
-        return sameDay && similarDesc;
-      });
-      
-      if (!exists) {
-        uniqueWeeklySpecials.push(special);
-      }
-    }
-    enhancedWeeklySpecials = uniqueWeeklySpecials;
-    
-  } catch (error) {
-    console.error('[DEBUG] Error processing deals for day detection:', error);
-  }
+  // Use deal types exactly as stored in database - no automatic conversion
+  const enhancedWeeklySpecials = weeklySpecials || [];
   
   // Deduplicate deals by comparing title and description (normalized)
   const normalizeDealText = (text: string): string => {
@@ -444,7 +206,7 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
     return false;
   };
   
-  const allDeals = enhancedDeals.length > 0 ? enhancedDeals.filter((deal, index, self) => {
+  const allDeals = rawDeals && rawDeals.length > 0 ? rawDeals.filter((deal, index, self) => {
     // Check if this deal is a duplicate of any earlier deal
     return !self.slice(0, index).some(earlierDeal => areDealsDuplicate(deal, earlierDeal));
   }) : null;
@@ -472,40 +234,6 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
     setImageLoading(false);
   };
 
-  const handleRemoveImage = async (imageUrl: string, index: number) => {
-    if (removingImage !== null) return;
-    
-    setRemovingImage(index);
-    try {
-      const response = await fetch('/api/images/mark-incorrect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageUrl,
-          restaurantId: restaurant.id,
-          restaurantName: restaurant.name,
-          reason: 'User marked as incorrect'
-        }),
-      });
-
-      if (response.ok) {
-        // Remove from local state
-        setImageErrors(prev => new Set(prev).add(index));
-        // Update images array
-        setImages(prev => prev.filter((_, idx) => idx !== index));
-        // Adjust current index if needed
-        if (currentImageIndex >= images.length - 1) {
-          setCurrentImageIndex(Math.max(0, images.length - 2));
-        }
-      } else {
-        console.error('Failed to remove image');
-      }
-    } catch (error) {
-      console.error('Error removing image:', error);
-    } finally {
-      setRemovingImage(null);
-    }
-  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
@@ -532,20 +260,6 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
             }}
           />
           
-          {/* Remove Image Button */}
-          <button
-            onClick={() => handleRemoveImage(images[currentImageIndex], currentImageIndex)}
-            disabled={removingImage === currentImageIndex}
-            className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-            title="Remove incorrect image"
-            aria-label="Remove incorrect image"
-          >
-            {removingImage === currentImageIndex ? (
-              <span className="text-xs">...</span>
-            ) : (
-              <span className="text-xs">✕</span>
-            )}
-          </button>
 
           {images.length > 1 && (
             <>
@@ -712,7 +426,20 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
             </summary>
             <div className="mt-2 space-y-2 text-sm">
               {happyHour && (
-                <div className="bg-purple-50 p-2 rounded">
+                <div className="bg-purple-50 p-2 rounded relative">
+                  <button
+                    onClick={() => {
+                      setReportingDeal({
+                        dealType: 'Happy Hour',
+                        dealDescription: `${happyHour.days ? `Days: ${happyHour.days.join(', ')}. ` : ''}${happyHour.hours ? `Hours: ${happyHour.hours}. ` : ''}${happyHour.description || ''}`,
+                      });
+                      setReportModalOpen(true);
+                    }}
+                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 text-xs font-medium"
+                    title="Report incorrect deal"
+                  >
+                    ⚠️ Report
+                  </button>
                   <p className="font-semibold text-purple-900">🍺 Happy Hour</p>
                   {happyHour.days && (
                     <p className="text-purple-700">
@@ -742,7 +469,20 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
                 </div>
               )}
               {enhancedWeeklySpecials && enhancedWeeklySpecials.length > 0 && (
-                <div className="bg-teal-50 p-2 rounded border border-teal-200">
+                <div className="bg-teal-50 p-2 rounded border border-teal-200 relative">
+                  <button
+                    onClick={() => {
+                      setReportingDeal({
+                        dealType: 'Weekly Specials',
+                        dealDescription: enhancedWeeklySpecials.map(s => `${s.day}: ${s.description}`).join('\n'),
+                      });
+                      setReportModalOpen(true);
+                    }}
+                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 text-xs font-medium"
+                    title="Report incorrect deal"
+                  >
+                    ⚠️ Report
+                  </button>
                   <p className="font-semibold text-teal-900">📅 Weekly Specials</p>
                   {enhancedWeeklySpecials.map((special, idx) => (
                     <p key={idx} className="text-teal-700">
@@ -753,7 +493,29 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
               )}
               {/* EatClub Deals - Orange Background */}
               {eatClubDeals && eatClubDeals.length > 0 && (
-                <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                <div className="bg-orange-50 p-2 rounded border border-orange-200 relative">
+                  <button
+                    onClick={() => {
+                      const dealDescriptions = eatClubDeals.map(d => {
+                        let desc = d.description || '';
+                        const normalizedDesc = desc.toLowerCase().trim();
+                        if (normalizedDesc.includes('eatclub') && 
+                            normalizedDesc !== 'check out our eatclub deals!') {
+                          desc = 'Check out our EatClub deals!';
+                        }
+                        return `${d.title ? d.title + ': ' : ''}${formatDealDescription(desc)}${d.validUntil ? ` (Valid until: ${d.validUntil})` : ''}`;
+                      }).join('\n');
+                      setReportingDeal({
+                        dealType: 'EatClub Deals',
+                        dealDescription: dealDescriptions,
+                      });
+                      setReportModalOpen(true);
+                    }}
+                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 text-xs font-medium"
+                    title="Report incorrect deal"
+                  >
+                    ⚠️ Report
+                  </button>
                   <p className="font-semibold text-orange-900">🍽️ Eat Club Deals</p>
                   {eatClubDeals.map((deal, idx) => {
                     // Only show the standard EatClub message, remove any other EatClub mentions
@@ -780,7 +542,24 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
               )}
               {/* In-House Current Deals - Green Background */}
               {inHouseDeals && inHouseDeals.length > 0 && (
-                <div className="bg-green-50 p-2 rounded border border-green-200">
+                <div className="bg-green-50 p-2 rounded border border-green-200 relative">
+                  <button
+                    onClick={() => {
+                      const dealDescriptions = inHouseDeals.map(d => {
+                        const formattedDesc = formatDealDescription(d.description || '');
+                        return `${d.title ? d.title + ': ' : ''}${formattedDesc}${d.validUntil ? ` (Valid until: ${d.validUntil})` : ''}`;
+                      }).join('\n');
+                      setReportingDeal({
+                        dealType: 'Current Deals',
+                        dealDescription: dealDescriptions,
+                      });
+                      setReportModalOpen(true);
+                    }}
+                    className="absolute top-2 right-2 text-red-600 hover:text-red-800 text-xs font-medium"
+                    title="Report incorrect deal"
+                  >
+                    ⚠️ Report
+                  </button>
                   <p className="font-semibold text-green-900">💰 Current Deals</p>
                   {inHouseDeals.map((deal, idx) => {
                     const formattedDescription = formatDealDescription(deal.description || '');
@@ -834,6 +613,24 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
           )}
         </div>
       </div>
+
+      {/* Report Deal Modal */}
+      {reportingDeal && (
+        <ReportDealModal
+          isOpen={reportModalOpen}
+          onClose={() => {
+            setReportModalOpen(false);
+            setReportingDeal(null);
+          }}
+          restaurantId={restaurant.id}
+          restaurantName={restaurant.name}
+          dealType={reportingDeal.dealType}
+          dealDescription={reportingDeal.dealDescription}
+          onReportSubmitted={() => {
+            console.log('[DEBUG] Report submitted successfully');
+          }}
+        />
+      )}
     </div>
   );
 }

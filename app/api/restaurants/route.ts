@@ -18,14 +18,17 @@ export async function GET(request: Request) {
     const hasEatClub = searchParams.get('hasEatClub') === 'true';
     const hasFirstTable = searchParams.get('hasFirstTable') === 'true';
     const hasDeals = searchParams.get('hasDeals') === 'true'; // Show restaurants with any deal
+    const includeInactive = searchParams.get('includeInactive') === 'true'; // Admin: include inactive restaurants
     const limit = parseInt(searchParams.get('limit') || '50', 10); // Default 50 per page
     const page = parseInt(searchParams.get('page') || '1', 10); // Default page 1
     const offset = (page - 1) * limit;
 
     const conditions = [];
 
-    // Always filter by active status
-    conditions.push(eq(restaurants.status, 'active'));
+    // Filter by active status (unless includeInactive is true for admin)
+    if (!includeInactive) {
+      conditions.push(eq(restaurants.status, 'active'));
+    }
 
     // Apply filters
     if (suburb) {
@@ -89,17 +92,18 @@ export async function GET(request: Request) {
       });
     }
 
-    // Filter by Happy Hour (inclusive with other filters - AND logic)
+    // Apply deal type filters with OR logic (restaurant matches if it has ANY of the selected deal types)
+    const dealFilters: Array<(restaurant: any) => boolean> = [];
+    
     if (hasHappyHour) {
-      results = results.filter(restaurant => {
+      dealFilters.push((restaurant: any) => {
         const happyHour = restaurant.happyHour;
         return happyHour !== null && happyHour !== undefined;
       });
     }
 
-    // Filter by Weekly Specials (inclusive with other filters - AND logic)
     if (hasWeeklySpecials) {
-      results = results.filter(restaurant => {
+      dealFilters.push((restaurant: any) => {
         const weeklySpecials = restaurant.weeklySpecials;
         return (
           weeklySpecials !== null &&
@@ -110,10 +114,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // Filter by Current Deals (inclusive with other filters - AND logic)
-    // Only show in-house deals, exclude EatClub and First Table deals
     if (hasCurrentDeals) {
-      results = results.filter(restaurant => {
+      dealFilters.push((restaurant: any) => {
         const deals = restaurant.deals;
         if (!deals || !Array.isArray(deals) || deals.length === 0) {
           return false;
@@ -139,17 +141,23 @@ export async function GET(request: Request) {
       });
     }
 
-    // Filter by EatClub (inclusive with other filters - AND logic)
     if (hasEatClub) {
-      results = results.filter(restaurant => {
+      dealFilters.push((restaurant: any) => {
         return restaurant.eatClubUrl !== null && restaurant.eatClubUrl !== undefined && restaurant.eatClubUrl !== '';
       });
     }
 
-    // Filter by First Table (inclusive with other filters - AND logic)
     if (hasFirstTable) {
-      results = results.filter(restaurant => {
+      dealFilters.push((restaurant: any) => {
         return restaurant.firstTableUrl !== null && restaurant.firstTableUrl !== undefined && restaurant.firstTableUrl !== '';
+      });
+    }
+
+    // Apply OR logic: restaurant matches if it satisfies ANY of the selected deal filters
+    if (dealFilters.length > 0) {
+      results = results.filter(restaurant => {
+        // Return true if restaurant matches ANY of the deal filters (OR logic)
+        return dealFilters.some(filter => filter(restaurant));
       });
     }
 

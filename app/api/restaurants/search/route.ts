@@ -14,11 +14,12 @@ export async function GET(request: Request) {
       return NextResponse.json([]);
     }
 
+    // Use ILIKE for case-insensitive search
     const conditions = [
       eq(restaurants.status, 'active'),
       or(
-        like(restaurants.name, `%${query}%`),
-        like(restaurants.suburb, `%${query}%`),
+        sql`${restaurants.name} ILIKE ${'%' + query + '%'}`,
+        sql`${restaurants.suburb} ILIKE ${'%' + query + '%'}`,
         sql`${restaurants.address} ILIKE ${'%' + query + '%'}`
       )!
     ];
@@ -32,6 +33,8 @@ export async function GET(request: Request) {
         phone: restaurants.phone,
         cuisine: restaurants.cuisine,
         priceRange: restaurants.priceRange,
+        websiteUrl: restaurants.websiteUrl,
+        businessType: restaurants.businessType,
       })
       .from(restaurants)
       .where(and(...conditions))

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/src/lib/db';
 import { restaurants } from '@/src/lib/schema';
 import { eq } from 'drizzle-orm';
+import { logChange } from '@/src/lib/audit-log';
 
 export async function PATCH(
   request: Request,
@@ -18,27 +19,57 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const updates: any = {};
+    
+    // Get current restaurant state for audit log
+    const currentRestaurant = await db
+      .select()
+      .from(restaurants)
+      .where(eq(restaurants.id, restaurantId))
+      .limit(1);
 
-    // Only update fields that are provided
-    if (body.name !== undefined) updates.name = body.name;
-    if (body.address !== undefined) updates.address = body.address || null;
-    if (body.suburb !== undefined) updates.suburb = body.suburb || null;
-    if (body.phone !== undefined) updates.phone = body.phone || null;
-    if (body.websiteUrl !== undefined) updates.websiteUrl = body.websiteUrl || null;
-    if (body.cuisine !== undefined) updates.cuisine = body.cuisine || null;
-    if (body.businessType !== undefined) updates.businessType = body.businessType || null;
-    if (body.eatClubUrl !== undefined) updates.eatClubUrl = body.eatClubUrl || null;
-    if (body.firstTableUrl !== undefined) updates.firstTableUrl = body.firstTableUrl || null;
-    if (body.happyHour !== undefined) updates.happyHour = body.happyHour || null;
-    if (body.weeklySpecials !== undefined) updates.weeklySpecials = body.weeklySpecials || null;
-    if (body.deals !== undefined) updates.deals = body.deals || null;
-    if (body.openingHours !== undefined) updates.openingHours = body.openingHours || null;
-    if (body.latitude !== undefined) updates.latitude = body.latitude ? String(body.latitude) : null;
-    if (body.longitude !== undefined) updates.longitude = body.longitude ? String(body.longitude) : null;
-    if (body.overallRating !== undefined) updates.overallRating = body.overallRating ? String(body.overallRating) : null;
-    if (body.imageUrls !== undefined) updates.imageUrls = body.imageUrls || null;
-    if (body.status !== undefined) updates.status = body.status;
+    if (currentRestaurant.length === 0) {
+      return NextResponse.json(
+        { error: 'Restaurant not found' },
+        { status: 404 }
+      );
+    }
+
+    const previousState = currentRestaurant[0];
+    const updates: any = {};
+    const changes: Record<string, { old: any; new: any }> = {};
+
+    // Only update fields that are provided and track changes
+    const trackChange = (field: string, newValue: any) => {
+      const oldValue = (previousState as any)[field];
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes[field] = { old: oldValue, new: newValue };
+        updates[field] = newValue;
+      }
+    };
+
+    if (body.name !== undefined) trackChange('name', body.name);
+    if (body.address !== undefined) trackChange('address', body.address || null);
+    if (body.suburb !== undefined) trackChange('suburb', body.suburb || null);
+    if (body.phone !== undefined) trackChange('phone', body.phone || null);
+    if (body.websiteUrl !== undefined) trackChange('websiteUrl', body.websiteUrl || null);
+    if (body.cuisine !== undefined) trackChange('cuisine', body.cuisine || null);
+    if (body.businessType !== undefined) trackChange('businessType', body.businessType || null);
+    if (body.eatClubUrl !== undefined) trackChange('eatClubUrl', body.eatClubUrl || null);
+    if (body.firstTableUrl !== undefined) trackChange('firstTableUrl', body.firstTableUrl || null);
+    if (body.happyHour !== undefined) trackChange('happyHour', body.happyHour || null);
+    if (body.weeklySpecials !== undefined) trackChange('weeklySpecials', body.weeklySpecials || null);
+    if (body.deals !== undefined) trackChange('deals', body.deals || null);
+    if (body.openingHours !== undefined) trackChange('openingHours', body.openingHours || null);
+    if (body.latitude !== undefined) trackChange('latitude', body.latitude ? String(body.latitude) : null);
+    if (body.longitude !== undefined) trackChange('longitude', body.longitude ? String(body.longitude) : null);
+    if (body.overallRating !== undefined) trackChange('overallRating', body.overallRating ? String(body.overallRating) : null);
+    if (body.imageUrls !== undefined) trackChange('imageUrls', body.imageUrls || null);
+    if (body.status !== undefined) trackChange('status', body.status);
+
+    // Only proceed if there are actual changes
+    if (Object.keys(changes).length === 0) {
+      return NextResponse.json({ success: true, restaurant: previousState, message: 'No changes detected' });
+    }
 
     updates.updatedAt = new Date();
 
@@ -53,6 +84,20 @@ export async function PATCH(
         { error: 'Restaurant not found' },
         { status: 404 }
       );
+    }
+
+    // Log the changes to audit log
+    const logged = await logChange({
+      restaurantId: restaurantId,
+      restaurantName: updated[0].name,
+      action: 'update',
+      changedBy: body.changedBy || 'admin',
+      changes: changes,
+      previousState: previousState,
+    });
+
+    if (!logged) {
+      console.warn('[AUDIT] Failed to log changes - check if audit log table exists');
     }
 
     return NextResponse.json({ success: true, restaurant: updated[0] });

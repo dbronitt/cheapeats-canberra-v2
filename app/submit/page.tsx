@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,6 +27,8 @@ interface RestaurantSuggestion {
   phone: string | null;
   cuisine: string | null;
   priceRange: string | null;
+  websiteUrl: string | null;
+  businessType: string | null;
 }
 
 export default function SubmitPage() {
@@ -39,7 +41,7 @@ export default function SubmitPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState<RestaurantSuggestion | null>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   
   const {
     register,
@@ -52,17 +54,61 @@ export default function SubmitPage() {
     resolver: zodResolver(submissionSchema),
   });
 
+  const searchRestaurants = useCallback(async (query: string) => {
+    try {
+      console.log('[DEBUG] SubmitPage: Searching restaurants with query:', query);
+      const response = await fetch(`/api/restaurants/search?q=${encodeURIComponent(query)}&limit=5`);
+      console.log('[DEBUG] SubmitPage: Search response status:', response.status);
+      
+      if (!response.ok) {
+        console.error('[DEBUG] SubmitPage: Search failed with status:', response.status);
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] SubmitPage: Search results:', data, 'Count:', data.length);
+      setSuggestions(data);
+      setShowSuggestions(data.length > 0);
+      console.log('[DEBUG] SubmitPage: Suggestions set, showSuggestions:', data.length > 0);
+    } catch (error) {
+      console.error('[DEBUG] SubmitPage: Error searching restaurants:', error);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, []);
+
   // Watch restaurant name for autocomplete
   const watchedName = watch('name');
 
   useEffect(() => {
+    // Don't search if a restaurant was just selected
+    if (selectedRestaurant && watchedName === selectedRestaurant.name) {
+      return;
+    }
+    
+    // Clear selection if user changes the name
+    if (selectedRestaurant && watchedName !== selectedRestaurant.name) {
+      setSelectedRestaurant(null);
+    }
+    
+    // Search when user types 2+ characters
     if (watchedName && watchedName.length >= 2) {
-      searchRestaurants(watchedName);
+      const timeoutId = setTimeout(() => {
+        console.log('[DEBUG] SubmitPage: Triggering search for:', watchedName);
+        searchRestaurants(watchedName);
+      }, 300); // Debounce search by 300ms
+      
+      return () => clearTimeout(timeoutId);
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
+      if (!watchedName || watchedName.length === 0) {
+        setSelectedRestaurant(null);
+      }
     }
-  }, [watchedName]);
+  }, [watchedName, selectedRestaurant, searchRestaurants]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -81,26 +127,26 @@ export default function SubmitPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchRestaurants = async (query: string) => {
-    try {
-      const response = await fetch(`/api/restaurants/search?q=${encodeURIComponent(query)}&limit=5`);
-      const data = await response.json();
-      setSuggestions(data);
-      setShowSuggestions(data.length > 0);
-    } catch (error) {
-      console.error('Error searching restaurants:', error);
-    }
-  };
-
   const selectRestaurant = (restaurant: RestaurantSuggestion) => {
+    console.log('[DEBUG] SubmitPage: Selecting restaurant:', restaurant);
+    
+    // Set selected restaurant first to prevent re-search
     setSelectedRestaurant(restaurant);
-    setValue('name', restaurant.name);
-    if (restaurant.address) setValue('address', restaurant.address);
-    if (restaurant.suburb) setValue('suburb', restaurant.suburb);
-    if (restaurant.phone) setValue('phone', restaurant.phone);
-    if (restaurant.cuisine) setValue('cuisine', restaurant.cuisine);
+    
+    // Populate all fields when restaurant is selected
+    setValue('name', restaurant.name || '', { shouldValidate: false, shouldDirty: true });
+    setValue('address', restaurant.address || '', { shouldValidate: false, shouldDirty: true });
+    setValue('suburb', restaurant.suburb || '', { shouldValidate: false, shouldDirty: true });
+    setValue('phone', restaurant.phone || '', { shouldValidate: false, shouldDirty: true });
+    setValue('cuisine', restaurant.cuisine || '', { shouldValidate: false, shouldDirty: true });
+    setValue('websiteUrl', restaurant.websiteUrl || '', { shouldValidate: false, shouldDirty: true });
+    setValue('businessType', restaurant.businessType || '', { shouldValidate: false, shouldDirty: true });
+    
+    // Hide suggestions dropdown
     setSuggestions([]);
     setShowSuggestions(false);
+    
+    console.log('[DEBUG] SubmitPage: Restaurant selected, all fields populated');
   };
 
   const onSubmit = async (data: SubmissionForm) => {
@@ -152,39 +198,113 @@ export default function SubmitPage() {
           </label>
           <input
             {...register('name')}
-            ref={inputRef}
+            ref={(e) => {
+              register('name').ref(e);
+              inputRef.current = e;
+            }}
             type="text"
+            autoComplete="off"
             className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             onFocus={() => {
-              if (suggestions.length > 0) {
-                setShowSuggestions(true);
+              console.log('[DEBUG] SubmitPage: Name input focused, current value:', watchedName);
+              // If there's a value and suggestions exist, show them
+              const currentValue = watchedName;
+              if (currentValue && currentValue.length >= 2) {
+                if (suggestions.length > 0) {
+                  setShowSuggestions(true);
+                } else {
+                  // Search if we don't have suggestions yet
+                  searchRestaurants(currentValue);
+                }
               }
+            }}
+            onBlur={(e) => {
+              // Delay hiding suggestions to allow click on suggestion
+              setTimeout(() => {
+                // Check if the blur was caused by clicking a suggestion
+                const activeElement = document.activeElement;
+                if (!suggestionsRef.current?.contains(activeElement) && 
+                    activeElement !== inputRef.current) {
+                  console.log('[DEBUG] SubmitPage: Input blurred, hiding suggestions');
+                  setShowSuggestions(false);
+                }
+              }, 250);
             }}
           />
           {errors.name && (
             <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
           )}
           
+          {/* Autocomplete Dropdown */}
           {showSuggestions && suggestions.length > 0 && (
             <div
               ref={suggestionsRef}
-              className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+              className="absolute w-full bg-white rounded-lg shadow-2xl border-2 border-blue-200 max-h-72 overflow-y-auto"
+              role="listbox"
+              style={{ 
+                top: '100%', 
+                marginTop: '8px',
+                zIndex: 9999,
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+              }}
             >
-              {suggestions.map((restaurant) => (
-                <div
-                  key={restaurant.id}
-                  onClick={() => selectRestaurant(restaurant)}
-                  className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-200 last:border-b-0"
-                >
-                  <div className="font-medium text-gray-900">{restaurant.name}</div>
-                  {restaurant.suburb && (
-                    <div className="text-sm text-gray-700">{restaurant.suburb}</div>
-                  )}
-                  {restaurant.address && (
-                    <div className="text-xs text-gray-600">{restaurant.address}</div>
-                  )}
-                </div>
-              ))}
+              <div className="py-2">
+                {suggestions.map((restaurant) => (
+                  <div
+                    key={restaurant.id}
+                    role="option"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[DEBUG] SubmitPage: Clicked on suggestion:', restaurant.name);
+                      selectRestaurant(restaurant);
+                    }}
+                    onMouseDown={(e) => {
+                      // Prevent input from losing focus when clicking suggestion
+                      e.preventDefault();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectRestaurant(restaurant);
+                      }
+                    }}
+                    className="px-5 py-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 active:bg-blue-100 cursor-pointer transition-all duration-150 border-b border-gray-100 last:border-b-0 group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900 text-base group-hover:text-blue-700 transition-colors">
+                          {restaurant.name}
+                        </div>
+                        {restaurant.suburb && (
+                          <div className="text-sm text-gray-600 mt-1 flex items-center gap-1">
+                            <span className="text-gray-400">📍</span>
+                            <span>{restaurant.suburb}</span>
+                          </div>
+                        )}
+                        {restaurant.address && (
+                          <div className="text-xs text-gray-500 mt-1.5 line-clamp-1">
+                            {restaurant.address}
+                          </div>
+                        )}
+                        {restaurant.cuisine && (
+                          <div className="mt-2 inline-block">
+                            <span className="text-xs font-medium px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                              {restaurant.cuisine}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
