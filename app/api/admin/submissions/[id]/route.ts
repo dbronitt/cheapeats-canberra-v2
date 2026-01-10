@@ -249,33 +249,3 @@ export async function DELETE(
     );
   }
 }
-
-      // Update submission with edits
-      const updatedSubmission = await db
-        .update(restaurantSubmissions)
-        .set({
-          ...updates,
-          updatedAt: new Date(),
-        })
-        .where(eq(restaurantSubmissions.id, submissionId))
-        .returning();
-
-      return NextResponse.json({
-        success: true,
-        submission: updatedSubmission[0],
-        message: 'Submission updated',
-      });
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid action. Use approve, reject, or edit' },
-        { status: 400 }
-      );
-    }
-  } catch (error) {
-    console.error('Error updating submission:', error);
-    return NextResponse.json(
-      { error: 'Failed to update submission' },
-      { status: 500 }
-    );
-  }
-}
