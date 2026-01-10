@@ -99,7 +99,6 @@ export default function SubmitPage() {
     if (restaurant.suburb) setValue('suburb', restaurant.suburb);
     if (restaurant.phone) setValue('phone', restaurant.phone);
     if (restaurant.cuisine) setValue('cuisine', restaurant.cuisine);
-    if (restaurant.priceRange) setValue('priceRange', restaurant.priceRange);
     setSuggestions([]);
     setShowSuggestions(false);
   };

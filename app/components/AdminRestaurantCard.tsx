@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import Image from 'next/image';
 
@@ -1025,8 +1025,6 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
     );
   }
 
-  // Compute display deals for non-editing mode
-  const displayDeals = getDisplayDeals();
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -1089,86 +1087,24 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
           )}
         </div>
 
-        {/* Deal Information - Unified Table */}
-        {displayDeals.length > 0 ? (
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-700 mb-2">Deals</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full border border-gray-300 rounded-md text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Deal Type</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Title</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Description</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Details</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Valid Until</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayDeals.map((deal) => (
-                    <tr key={deal.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 border-b">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded ${
-                          deal.dealType === 'Happy Hour' ? 'bg-purple-100 text-purple-800' :
-                          deal.dealType === 'Weekly Deal' ? 'bg-teal-100 text-teal-800' :
-                          'bg-green-100 text-green-800'
-                        }`}>
-                          {deal.dealType === 'Happy Hour' ? '🍺 HH' : deal.dealType === 'Weekly Deal' ? '📅 WS' : '🎉 Deal'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 border-b text-gray-700">
-                        {deal.title || '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b text-gray-700">
-                        {deal.description || '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b text-gray-700">
-                        {deal.dealType === 'Happy Hour' ? (
-                          <div>
-                            {deal.days && deal.days.length > 0 && (
-                              <div className="text-xs">Days: {deal.days.join(', ')}</div>
-                            )}
-                            {deal.hours && <div className="text-xs">Hours: {deal.hours}</div>}
-                          </div>
-                        ) : deal.dealType === 'Weekly Deal' ? (
-                          <div className="text-xs">{deal.day || '-'}</div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td className="px-3 py-2 border-b text-gray-700">
-                        {deal.validUntil || '-'}
-                      </td>
-                      <td className="px-3 py-2 border-b text-gray-700">
-                        {deal.source || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
-        
         {/* Opening Hours */}
-        {restaurant.openingHours && (
+        {restaurant.openingHours ? (
           <div className="mt-3 pt-3 border-t border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">Opening Hours</h4>
             <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded">
               {JSON.stringify(restaurant.openingHours, null, 2)}
             </pre>
           </div>
-        )}
+        ) : null}
         
         {/* Location Coordinates */}
-        {(restaurant.latitude || restaurant.longitude) && (
+        {(restaurant.latitude || restaurant.longitude) ? (
           <div className="mt-3 pt-3 border-t border-gray-200">
             <p className="text-xs text-gray-600">
               📍 Coordinates: {restaurant.latitude}, {restaurant.longitude}
             </p>
           </div>
-        )}
+        ) : null}
         
         {/* Status and Rating */}
         <div className="mt-3 pt-3 border-t border-gray-200 flex gap-4 text-xs">

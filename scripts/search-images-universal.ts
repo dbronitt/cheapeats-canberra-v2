@@ -149,11 +149,11 @@ function isValidImageUrl(url: string): boolean {
   );
   
   // Allow URLs without extension if they look like image URLs (e.g., CDN URLs)
-  const looksLikeImage = url.match(/\/images?\//i) || 
+  const looksLikeImage = !!(url.match(/\/images?\//i) || 
                          url.match(/\/media\//i) ||
                          url.match(/\/photos?\//i) ||
                          url.match(/\/gallery\//i) ||
-                         url.match(/\/assets\/.*\.(jpg|jpeg|png|gif|webp)/i);
+                         url.match(/\/assets\/.*\.(jpg|jpeg|png|gif|webp)/i));
   
   return hasImageExtension || looksLikeImage;
 }

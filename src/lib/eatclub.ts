@@ -401,7 +401,7 @@ export async function searchEatClubCanberra(): Promise<EatClubVenue[]> {
       return Array.from(urls);
     });
     
-    pageVenueUrls.forEach(url => allVenueUrls.add(url));
+    pageVenueUrls.forEach((url: string) => allVenueUrls.add(url));
     console.log(`   ✅ Found ${pageVenueUrls.length} restaurants on page ${currentPage} (total so far: ${allVenueUrls.size})`);
     
     // Navigate through additional pages
@@ -454,7 +454,7 @@ export async function searchEatClubCanberra(): Promise<EatClubVenue[]> {
           break;
         }
         
-        pageVenueUrls.forEach(url => allVenueUrls.add(url));
+        pageVenueUrls.forEach((url: string) => allVenueUrls.add(url));
         console.log(`   ✅ Found ${pageVenueUrls.length} restaurants on page ${currentPage} (total so far: ${allVenueUrls.size})`);
         
         // Rate limiting between pages
@@ -604,6 +604,8 @@ export async function searchEatClubCanberra(): Promise<EatClubVenue[]> {
       
       // Strategy 2: Check data attributes on clickable elements
       const clickableElements = document.querySelectorAll('[onclick], [data-venue], [data-restaurant], [data-slug], [data-href]');
+      const categoryWords = ['melbourne', 'sydney', 'brisbane', 'perth', 'adelaide', 'canberra', 
+                             'cuisine', 'category', 'venues', 'venue', 'search', 'location'];
       clickableElements.forEach((el: any) => {
         const venueUrl = el.getAttribute('data-venue') || 
                         el.getAttribute('data-restaurant') ||
