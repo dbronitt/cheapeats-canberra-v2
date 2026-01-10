@@ -1090,7 +1090,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
         </div>
 
         {/* Deal Information - Unified Table */}
-        {displayDeals.length > 0 && (
+        {displayDeals.length > 0 ? (
           <div className="mt-3 pt-3 border-t border-gray-200">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">Deals</h4>
             <div className="overflow-x-auto">
@@ -1149,7 +1149,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
               </table>
             </div>
           </div>
-        )}
+        ) : null}
         
         {/* Opening Hours */}
         {restaurant.openingHours && (
