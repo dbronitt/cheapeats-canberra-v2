@@ -1,0 +1,20 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#9333ea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#db2777;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="40" height="40" rx="8" fill="url(#logoGradient)"/>
+  <!-- Plate -->
+  <ellipse cx="20" cy="22" rx="12" ry="3" fill="white" opacity="0.9"/>
+  <!-- Fork -->
+  <path d="M12 8L12 18M10 18L14 18M11 16L11 20M13 16L13 20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <!-- Knife -->
+  <path d="M28 8L28 20M26 20L30 20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <!-- Food on plate -->
+  <circle cx="18" cy="20" r="2" fill="#fbbf24"/>
+  <circle cx="22" cy="20" r="2" fill="#f59e0b"/>
+  <circle cx="20" cy="18" r="1.5" fill="#f97316"/>
+</svg>
