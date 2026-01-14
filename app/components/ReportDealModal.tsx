@@ -44,13 +44,20 @@ export default function ReportDealModal({
           dealType,
           dealDescription,
           reason: reason || 'Deal is incorrect',
-          reportedBy: reportedBy || null,
+          reportedBy: reportedBy || '', // Send empty string instead of null to match schema
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        // Show detailed validation errors if available
+        if (data.details && Array.isArray(data.details)) {
+          const errorMessages = data.details.map((err: any) => 
+            `${err.path.join('.')}: ${err.message}`
+          ).join(', ');
+          throw new Error(data.error + ': ' + errorMessages);
+        }
         throw new Error(data.error || 'Failed to submit report');
       }
 

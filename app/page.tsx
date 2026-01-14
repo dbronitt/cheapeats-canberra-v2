@@ -162,9 +162,11 @@ export default function Home() {
         <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient">
           CheapEats Canberra
         </h1>
-        <p className="text-gray-800 text-lg md:text-xl font-medium drop-shadow-sm">
-          Discover the best restaurant deals, happy hours, and weekly specials in Canberra
-        </p>
+        <div className="inline-block bg-white/90 backdrop-blur-md px-6 py-3 rounded-lg shadow-xl border border-white/60 animate-fadeIn">
+          <p className="text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient drop-shadow-sm">
+            Discover the best restaurant deals, happy hours, and weekly specials in Canberra
+          </p>
+        </div>
       </div>
 
       {/* Filters */}

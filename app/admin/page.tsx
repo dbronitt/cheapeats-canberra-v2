@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import { RestaurantSubmission } from '@/src/lib/schema/submissions';
+import { RestaurantFlag } from '@/src/lib/schema/flags';
 import RestaurantFilters, { FilterState } from '../components/RestaurantFilters';
 import AdminRestaurantTable from '../components/AdminRestaurantTable';
 import SubmissionsTable from '../components/SubmissionsTable';
+import ReportsTable from '../components/ReportsTable';
 import RecentChanges from '../components/RecentChanges';
 import LoadingSpinner from '../components/LoadingSpinner';
 import RestaurantCardSkeleton from '../components/RestaurantCardSkeleton';
@@ -21,11 +23,14 @@ export default function AdminPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [submissions, setSubmissions] = useState<RestaurantSubmission[]>([]);
+  const [flags, setFlags] = useState<RestaurantFlag[]>([]);
   const [submissionsCount, setSubmissionsCount] = useState<number>(0);
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'restaurants' | 'submissions' | 'changes'>('restaurants');
+  const [flagsLoading, setFlagsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'restaurants' | 'submissions' | 'reports' | 'changes'>('restaurants');
   const [editingRestaurantId, setEditingRestaurantId] = useState<number | null>(null);
   const [updating, setUpdating] = useState<{
     findEatClub: boolean;
@@ -121,15 +126,18 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchSubmissionsCount();
+      fetchFlagsCount();
     }
   }, [isAuthenticated]);
 
   useEffect(() => {
-    console.log('[DEBUG] AdminPage: useEffect triggered, fetching restaurants');
+    console.log('[DEBUG] AdminPage: useEffect triggered, fetching data');
     if (activeTab === 'restaurants') {
       fetchRestaurants();
-    } else {
+    } else if (activeTab === 'submissions') {
       fetchSubmissions();
+    } else if (activeTab === 'reports') {
+      fetchFlags();
     }
   }, [filters, activeTab]);
 
@@ -179,6 +187,52 @@ export default function AdminPage() {
     } finally {
       console.log('[DEBUG] AdminPage: Setting submissions loading to false');
       setSubmissionsLoading(false);
+    }
+  };
+
+  const fetchFlags = async () => {
+    console.log('[DEBUG] AdminPage: fetchFlags called');
+    setFlagsLoading(true);
+    try {
+      const response = await fetch('/api/admin/flags?status=all');
+      console.log('[DEBUG] AdminPage: Flags response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] AdminPage: Flags data:', data);
+      
+      if (data.flags && Array.isArray(data.flags)) {
+        console.log('[DEBUG] AdminPage: Received', data.flags.length, 'flags');
+        setFlags(data.flags);
+        setPendingReportsCount(data.flags.filter((f: RestaurantFlag) => f.status === 'pending').length);
+      } else {
+        console.error('[DEBUG] AdminPage: ERROR: Invalid flags response format!', data);
+        setFlags([]);
+        setPendingReportsCount(0);
+      }
+    } catch (error) {
+      console.error('[DEBUG] AdminPage: Error fetching flags:', error);
+      setFlags([]);
+    } finally {
+      console.log('[DEBUG] AdminPage: Setting flags loading to false');
+      setFlagsLoading(false);
+    }
+  };
+
+  const fetchFlagsCount = async () => {
+    try {
+      const response = await fetch('/api/admin/flags?status=all');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.flags && Array.isArray(data.flags)) {
+          setPendingReportsCount(data.flags.filter((f: RestaurantFlag) => f.status === 'pending').length);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching flags count:', error);
     }
   };
 
@@ -411,6 +465,26 @@ export default function AdminPage() {
                 pendingCount > 0 ? 'bg-yellow-500' : 'bg-gray-500'
               }`}>
                 {pendingCount > 0 ? pendingCount : submissionsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('reports');
+              if (flags.length === 0) {
+                fetchFlags();
+              }
+            }}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === 'reports'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Reports
+            {pendingReportsCount > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                {pendingReportsCount}
               </span>
             )}
           </button>
@@ -817,6 +891,30 @@ export default function AdminPage() {
               onUpdate={() => {
                 fetchSubmissions();
                 fetchSubmissionsCount();
+              }}
+              onNavigateToRestaurant={(restaurantId) => {
+                setEditingRestaurantId(restaurantId);
+                setActiveTab('restaurants');
+                // Refresh restaurants to ensure we have the latest data
+                fetchRestaurants();
+              }}
+            />
+          )}
+        </>
+      ) : activeTab === 'reports' ? (
+        <>
+          {/* Reports */}
+          {flagsLoading ? (
+            <div className="flex items-center justify-center gap-3 py-8">
+              <LoadingSpinner size="lg" />
+              <p className="text-gray-900 text-lg font-medium">Loading reports...</p>
+            </div>
+          ) : (
+            <ReportsTable
+              flags={flags}
+              onUpdate={() => {
+                fetchFlags();
+                fetchFlagsCount();
               }}
               onNavigateToRestaurant={(restaurantId) => {
                 setEditingRestaurantId(restaurantId);
