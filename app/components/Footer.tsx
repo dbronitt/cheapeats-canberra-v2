@@ -19,9 +19,20 @@ export default function Footer() {
           </div>
           <div>
             <h4 className="font-semibold mb-4">About</h4>
-            <p className="text-gray-300">
+            <p className="text-gray-300 mb-4">
               Community-driven platform helping Canberrans discover great food at great prices.
             </p>
+            <div>
+              <a 
+                href="https://ko-fi.com/dbronitt" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#13C3FF] hover:bg-[#0ea5e9] text-white rounded-lg transition-colors font-medium"
+              >
+                <span>☕</span>
+                <span>Buy me a coffee</span>
+              </a>
+            </div>
           </div>
         </div>
         <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
