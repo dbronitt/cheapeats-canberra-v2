@@ -42,17 +42,24 @@ async function updateRestaurantWithEatClub(
     .limit(1))[0]?.deals as Array<any> | null;
 
   const deals = currentDeals || [];
-  if (hasDeal && (eatClubVenue.dealTitle || eatClubVenue.dealDescription)) {
-    const dealExists = deals.some(d => 
-      d.title === eatClubVenue.dealTitle || 
-      d.description === eatClubVenue.dealDescription
-    );
-    if (!dealExists) {
-      deals.push({
-        title: eatClubVenue.dealTitle || 'EatClub Deal Available',
-        description: eatClubVenue.dealDescription || 'Check out our EatClub deals!',
-        source: 'eatclub',
-      });
+  if (hasDeal) {
+    // Check if EatClub deal already exists
+    const eatClubDealIndex = deals.findIndex((d: any) => d.source === 'EatClub' || d.source === 'eatclub');
+    
+    // Always use standardized format for EatClub deals
+    const newDeal = {
+      title: 'EatClub Deal Available',
+      description: 'Check out our EatClub deals!',
+      validUntil: null,
+      source: 'EatClub'
+    };
+    
+    if (eatClubDealIndex >= 0) {
+      // Update existing EatClub deal
+      deals[eatClubDealIndex] = newDeal;
+    } else {
+      // Add new EatClub deal
+      deals.push(newDeal);
     }
   }
 

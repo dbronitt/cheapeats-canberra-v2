@@ -19,7 +19,9 @@
     "validate:images": "tsx -r dotenv/config scripts/validate-and-remove-broken-images.ts dotenv_config_path=.env.local",
     "merge:restaurants": "tsx -r dotenv/config scripts/merge-restaurants.ts dotenv_config_path=.env.local",
     "update:csv": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts dotenv_config_path=.env.local",
-    "update:csv:create": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts --create dotenv_config_path=.env.local"
+    "update:csv:create": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts --create dotenv_config_path=.env.local",
+    "backup:db": "tsx -r dotenv/config scripts/backup-database.ts dotenv_config_path=.env.local",
+    "fix:deals": "tsx -r dotenv/config scripts/fix-malformed-deals.ts dotenv_config_path=.env.local"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
