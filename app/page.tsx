@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import RestaurantFilters, { FilterState } from './components/RestaurantFilters';
 import RestaurantList from './components/RestaurantList';
 import { useFilterPersistence } from '@/src/hooks/useFilterPersistence';
 import LoadingSpinner from './components/LoadingSpinner';
 import RestaurantCardSkeleton from './components/RestaurantCardSkeleton';
+import StructuredData from './components/StructuredData';
 
 export default function Home() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -151,23 +152,50 @@ export default function Home() {
 
   console.log('[DEBUG] Rendering Home component - loading:', loading, 'restaurants:', restaurants.length, 'isLoaded:', isLoaded);
 
+  // Generate structured data for SEO (memoized to prevent re-renders)
+  const structuredData = useMemo(() => {
+    const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://cheapeats-canberra.vercel.app';
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'CheapEats Canberra',
+      description: 'Discover the best restaurant deals, happy hours, and weekly specials in Canberra, Australia',
+      url: siteUrl,
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${siteUrl}/?search={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'CheapEats Canberra',
+        url: siteUrl,
+      },
+    };
+  }, []);
+
   return (
-    <div className="container mx-auto px-4 py-8 relative z-10">
-      {/* Debug indicator - should always be visible */}
-      <div style={{ position: 'fixed', top: '10px', right: '10px', background: 'red', color: 'white', padding: '10px', zIndex: 9999, fontSize: '12px' }}>
-        DEBUG: React is rendering | Loading: {loading ? 'YES' : 'NO'} | Restaurants: {restaurants.length} | isLoaded: {isLoaded ? 'YES' : 'NO'}
-      </div>
-      {/* Hero Section */}
-      <div className="text-center mb-8 animate-fadeIn">
-        <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient">
-          CheapEats Canberra
-        </h1>
-        <div className="inline-block bg-white/90 backdrop-blur-md px-6 py-3 rounded-lg shadow-xl border border-white/60 animate-fadeIn">
-          <p className="text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient drop-shadow-sm">
-            Discover the best restaurant deals, happy hours, and weekly specials in Canberra
-          </p>
+    <>
+      <StructuredData data={structuredData} />
+      <div className="container mx-auto px-4 py-8 relative z-10">
+        {/* Debug indicator - should always be visible */}
+        <div style={{ position: 'fixed', top: '10px', right: '10px', background: 'red', color: 'white', padding: '10px', zIndex: 9999, fontSize: '12px' }}>
+          DEBUG: React is rendering | Loading: {loading ? 'YES' : 'NO'} | Restaurants: {restaurants.length} | isLoaded: {isLoaded ? 'YES' : 'NO'}
         </div>
-      </div>
+        {/* Hero Section */}
+        <header className="text-center mb-8 animate-fadeIn">
+          <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient">
+            CheapEats Canberra
+          </h1>
+          <div className="inline-block bg-white/90 backdrop-blur-md px-6 py-3 rounded-lg shadow-xl border border-white/60 animate-fadeIn">
+            <p className="text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient drop-shadow-sm">
+              Discover the best restaurant deals, happy hours, and weekly specials in Canberra
+            </p>
+          </div>
+        </header>
 
       {/* Filters */}
       <RestaurantFilters onFilterChange={setFilters} initialFilters={filters} />
@@ -257,6 +285,7 @@ export default function Home() {
           )}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

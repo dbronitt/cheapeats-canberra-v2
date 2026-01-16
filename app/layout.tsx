@@ -7,9 +7,73 @@ import RotatingBackground from './components/RotatingBackground';
 
 const inter = Inter({ subsets: ['latin'] });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://cheapeats-canberra.vercel.app';
+const siteName = 'CheapEats Canberra';
+const defaultDescription = 'Discover the best restaurant deals, happy hours, and weekly specials in Canberra, Australia. Find cheap eats, discounts, and special offers at local restaurants, cafes, and bars.';
+
 export const metadata: Metadata = {
-  title: 'CheapEats Canberra - Find the Best Restaurant Deals',
-  description: 'Discover restaurants, deals, happy hours, and weekly specials in Canberra, Australia',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: `${siteName} - Find the Best Restaurant Deals`,
+    template: `%s | ${siteName}`,
+  },
+  description: defaultDescription,
+  keywords: [
+    'Canberra restaurants',
+    'restaurant deals Canberra',
+    'happy hour Canberra',
+    'cheap eats Canberra',
+    'restaurant specials',
+    'Canberra dining deals',
+    'food discounts Canberra',
+    'weekly specials Canberra',
+    'EatClub Canberra',
+    'First Table Canberra',
+    'restaurant offers',
+    'Canberra food deals',
+  ],
+  authors: [{ name: 'CheapEats Canberra' }],
+  creator: 'CheapEats Canberra',
+  publisher: 'CheapEats Canberra',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_AU',
+    url: siteUrl,
+    siteName: siteName,
+    title: `${siteName} - Find the Best Restaurant Deals`,
+    description: defaultDescription,
+    images: [
+      {
+        url: '/logo.svg',
+        width: 1200,
+        height: 630,
+        alt: 'CheapEats Canberra Logo',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${siteName} - Find the Best Restaurant Deals`,
+    description: defaultDescription,
+    images: ['/logo.svg'],
+    creator: '@cheapeatscanberra',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
   icons: {
     icon: [
       { url: '/logo.svg', type: 'image/svg+xml' },
@@ -17,6 +81,13 @@ export const metadata: Metadata = {
     ],
     shortcut: '/logo.svg',
     apple: '/logo.svg',
+  },
+  alternates: {
+    canonical: siteUrl,
+  },
+  verification: {
+    // Add Google Search Console verification when available
+    // google: 'your-google-verification-code',
   },
 };
 
