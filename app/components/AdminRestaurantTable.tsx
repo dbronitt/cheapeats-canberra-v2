@@ -193,7 +193,7 @@ export default function AdminRestaurantTable({ restaurants, onUpdate, initialEdi
                   const hasWeeklySpecials = Array.isArray(restaurant.weeklySpecials) && restaurant.weeklySpecials.length > 0;
                   const hasDeals = Array.isArray(restaurant.deals) && restaurant.deals.length > 0;
                   const hasAnyDeal = hasHappyHour || hasWeeklySpecials || hasDeals || restaurant.eatClubUrl || restaurant.firstTableUrl;
-                  const isTopPick = restaurant.curatorsTopPick === 'true' || restaurant.curatorsTopPick === true;
+                  const isTopPick = restaurant.curatorsTopPick === 'true';
 
                   return (
                     <tr

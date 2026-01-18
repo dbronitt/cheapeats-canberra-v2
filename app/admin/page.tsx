@@ -65,6 +65,7 @@ export default function AdminPage() {
     hasCurrentDeals: false,
     hasEatClub: false,
     hasFirstTable: false,
+    hasTopPicks: false,
   });
 
   // Check authentication on mount
