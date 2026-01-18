@@ -193,6 +193,7 @@ export default function AdminRestaurantTable({ restaurants, onUpdate, initialEdi
                   const hasWeeklySpecials = Array.isArray(restaurant.weeklySpecials) && restaurant.weeklySpecials.length > 0;
                   const hasDeals = Array.isArray(restaurant.deals) && restaurant.deals.length > 0;
                   const hasAnyDeal = hasHappyHour || hasWeeklySpecials || hasDeals || restaurant.eatClubUrl || restaurant.firstTableUrl;
+                  const isTopPick = restaurant.curatorsTopPick === 'true' || restaurant.curatorsTopPick === true;
 
                   return (
                     <tr
@@ -200,7 +201,14 @@ export default function AdminRestaurantTable({ restaurants, onUpdate, initialEdi
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{restaurant.name}</div>
+                        <div className="flex items-center gap-1">
+                          {isTopPick && (
+                            <span className="text-yellow-500" title="Curator's Top Pick">
+                              ⭐
+                            </span>
+                          )}
+                          <div className="text-sm font-medium text-gray-900">{restaurant.name}</div>
+                        </div>
                         {restaurant.phone && (
                           <div className="text-xs text-gray-500">{restaurant.phone}</div>
                         )}
@@ -281,12 +289,31 @@ export default function AdminRestaurantTable({ restaurants, onUpdate, initialEdi
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleEditClick(restaurant.id)}
-                          className="text-blue-600 hover:text-blue-900 transition-colors px-3 py-1 rounded hover:bg-blue-50"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            onClick={async () => {
+                              await onUpdate(restaurant.id, { 
+                                curatorsTopPick: isTopPick ? 'false' : 'true' 
+                              });
+                            }}
+                            className={`p-1.5 rounded transition-colors ${
+                              isTopPick 
+                                ? 'text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50' 
+                                : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-50'
+                            }`}
+                            title={isTopPick ? 'Remove from Top Picks' : 'Mark as Curator\'s Top Pick'}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={isTopPick ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleEditClick(restaurant.id)}
+                            className="text-blue-600 hover:text-blue-900 transition-colors px-3 py-1 rounded hover:bg-blue-50"
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

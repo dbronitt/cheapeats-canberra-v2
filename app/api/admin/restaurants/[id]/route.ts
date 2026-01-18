@@ -65,6 +65,7 @@ export async function PATCH(
     if (body.overallRating !== undefined) trackChange('overallRating', body.overallRating ? String(body.overallRating) : null);
     if (body.imageUrls !== undefined) trackChange('imageUrls', body.imageUrls || null);
     if (body.status !== undefined) trackChange('status', body.status);
+    if (body.curatorsTopPick !== undefined) trackChange('curatorsTopPick', body.curatorsTopPick ? 'true' : 'false');
 
     // Only proceed if there are actual changes
     if (Object.keys(changes).length === 0) {

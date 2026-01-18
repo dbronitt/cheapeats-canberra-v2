@@ -25,6 +25,7 @@ export const restaurants = pgTable('restaurants', {
   overallRating: numeric('overall_rating', { precision: 3, scale: 2 }),
   googlePlaceId: varchar('google_place_id', { length: 255 }),
   foursquarePlaceId: varchar('foursquare_place_id', { length: 255 }),
+  curatorsTopPick: varchar('curators_top_pick', { length: 10 }).default('false'), // "true" or "false" as string
   status: varchar('status', { length: 20 }).notNull().default('active'), // "active", "inactive", "closed"
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

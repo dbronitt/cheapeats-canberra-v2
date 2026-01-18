@@ -240,8 +240,12 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
   };
 
 
+  const isTopPick = restaurant.curatorsTopPick === 'true' || restaurant.curatorsTopPick === true;
+
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+    <div className={`bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow ${
+      isTopPick ? 'ring-4 ring-yellow-400 ring-opacity-75 border-2 border-yellow-400' : ''
+    }`}>
       {/* Image Slideshow */}
       {images.length > 0 ? (
         <div className="relative h-48 w-full group overflow-hidden">
