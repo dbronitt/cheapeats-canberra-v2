@@ -19,11 +19,6 @@ export interface FilterState {
   hasFirstTable: boolean;
 }
 
-const CUISINES = [
-  'Asian', 'Italian', 'Mexican', 'Indian', 'Thai', 'Japanese', 'Chinese',
-  'Mediterranean', 'Australian', 'French', 'American', 'Other'
-];
-
 const SUBURBS = [
   'City', 'Braddon', 'Dickson', 'Kingston', 'Manuka', 'NewActon', 'Civic',
   'Belconnen', 'Tuggeranong', 'Woden', 'Gungahlin', 'Weston Creek'
@@ -43,6 +38,34 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
   };
 
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters);
+  const [cuisines, setCuisines] = useState<string[]>([]);
+  const [cuisinesLoading, setCuisinesLoading] = useState(true);
+
+  // Fetch cuisines from API on component mount
+  useEffect(() => {
+    const fetchCuisines = async () => {
+      try {
+        console.log('[DEBUG] Fetching cuisines from API...');
+        const response = await fetch('/api/admin/cuisines');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch cuisines: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('[DEBUG] Received cuisines:', data.cuisines);
+        if (data.cuisines && Array.isArray(data.cuisines)) {
+          setCuisines(data.cuisines.sort());
+        }
+      } catch (error) {
+        console.error('[DEBUG] Error fetching cuisines:', error);
+        // Fallback to empty array if API fails
+        setCuisines([]);
+      } finally {
+        setCuisinesLoading(false);
+      }
+    };
+
+    fetchCuisines();
+  }, []);
 
   // Sync with initialFilters when they change (e.g., loaded from localStorage)
   useEffect(() => {
@@ -116,11 +139,16 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
             value={filters.cuisine}
             onChange={(e) => updateFilter('cuisine', e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            disabled={cuisinesLoading}
           >
             <option value="">All Cuisines</option>
-            {CUISINES.map(cuisine => (
-              <option key={cuisine} value={cuisine}>{cuisine}</option>
-            ))}
+            {cuisinesLoading ? (
+              <option value="">Loading cuisines...</option>
+            ) : (
+              cuisines.map(cuisine => (
+                <option key={cuisine} value={cuisine}>{cuisine}</option>
+              ))
+            )}
           </select>
         </div>
 

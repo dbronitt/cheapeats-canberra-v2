@@ -12,10 +12,15 @@ export async function GET(request: Request) {
       .where(isNotNull(restaurants.cuisine));
 
     // Extract unique cuisine strings and filter out nulls/empty strings
+    // Handle comma-separated cuisines (e.g., "Indian, Asian" -> ["Indian", "Asian"])
     const cuisineSet = new Set<string>();
     result.forEach(r => {
       if (r.cuisine && r.cuisine.trim() !== '') {
-        cuisineSet.add(r.cuisine.trim());
+        // Split by comma and trim each cuisine
+        const cuisines = r.cuisine.split(',').map(c => c.trim()).filter(c => c !== '');
+        cuisines.forEach(cuisine => {
+          cuisineSet.add(cuisine);
+        });
       }
     });
 
