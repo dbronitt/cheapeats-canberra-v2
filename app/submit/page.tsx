@@ -175,7 +175,8 @@ export default function SubmitPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl bg-white rounded-lg shadow-lg my-8">
-      <h1 className="text-3xl font-bold mb-6 text-gray-900">Submit a Restaurant</h1>
+      <h1 className="text-3xl font-bold mb-2 text-gray-900">Submit a Restaurant/Deal</h1>
+      <p className="text-gray-600 mb-6 italic">Know a great deal in Canberra? Share the love.</p>
 
       {submitted && (
         <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
@@ -400,7 +401,7 @@ export default function SubmitPage() {
           disabled={isSubmitting}
           className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-md hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
         >
-          {isSubmitting ? 'Submitting...' : 'Submit Restaurant'}
+          {isSubmitting ? 'Submitting...' : 'Submit Restaurant/Deal'}
         </button>
       </form>
     </div>

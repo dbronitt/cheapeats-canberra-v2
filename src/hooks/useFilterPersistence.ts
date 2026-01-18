@@ -13,6 +13,7 @@ const defaultFilters: FilterState = {
   hasCurrentDeals: false,
   hasEatClub: false,
   hasFirstTable: false,
+  hasTopPicks: false,
 };
 
 /**

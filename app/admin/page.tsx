@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import { RestaurantSubmission } from '@/src/lib/schema/submissions';
 import { RestaurantFlag } from '@/src/lib/schema/flags';
+import { ContactSubmission } from '@/src/lib/schema/contact-submissions';
 import RestaurantFilters, { FilterState } from '../components/RestaurantFilters';
 import AdminRestaurantTable from '../components/AdminRestaurantTable';
 import SubmissionsTable from '../components/SubmissionsTable';
 import ReportsTable from '../components/ReportsTable';
+import ContactSubmissionsTable from '../components/ContactSubmissionsTable';
 import RecentChanges from '../components/RecentChanges';
 import LoadingSpinner from '../components/LoadingSpinner';
 import RestaurantCardSkeleton from '../components/RestaurantCardSkeleton';
@@ -24,13 +26,16 @@ export default function AdminPage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [submissions, setSubmissions] = useState<RestaurantSubmission[]>([]);
   const [flags, setFlags] = useState<RestaurantFlag[]>([]);
+  const [contactSubmissions, setContactSubmissions] = useState<ContactSubmission[]>([]);
   const [submissionsCount, setSubmissionsCount] = useState<number>(0);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
+  const [pendingContactCount, setPendingContactCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [flagsLoading, setFlagsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'restaurants' | 'submissions' | 'reports' | 'changes'>('restaurants');
+  const [contactLoading, setContactLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'restaurants' | 'submissions' | 'reports' | 'contact' | 'changes'>('restaurants');
   const [editingRestaurantId, setEditingRestaurantId] = useState<number | null>(null);
   const [updating, setUpdating] = useState<{
     findEatClub: boolean;
@@ -127,6 +132,7 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchSubmissionsCount();
       fetchFlagsCount();
+      fetchContactCount();
     }
   }, [isAuthenticated]);
 
@@ -138,6 +144,8 @@ export default function AdminPage() {
       fetchSubmissions();
     } else if (activeTab === 'reports') {
       fetchFlags();
+    } else if (activeTab === 'contact') {
+      fetchContactSubmissions();
     }
   }, [filters, activeTab]);
 
@@ -233,6 +241,52 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error('Error fetching flags count:', error);
+    }
+  };
+
+  const fetchContactSubmissions = async () => {
+    console.log('[DEBUG] AdminPage: fetchContactSubmissions called');
+    setContactLoading(true);
+    try {
+      const response = await fetch('/api/admin/contact');
+      console.log('[DEBUG] AdminPage: Contact submissions response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] AdminPage: Contact submissions data:', data);
+      
+      if (Array.isArray(data)) {
+        console.log('[DEBUG] AdminPage: Received', data.length, 'contact submissions');
+        setContactSubmissions(data);
+        setPendingContactCount(data.filter((c: ContactSubmission) => c.status === 'pending').length);
+      } else {
+        console.error('[DEBUG] AdminPage: ERROR: Invalid contact submissions response format!', data);
+        setContactSubmissions([]);
+        setPendingContactCount(0);
+      }
+    } catch (error) {
+      console.error('[DEBUG] AdminPage: Error fetching contact submissions:', error);
+      setContactSubmissions([]);
+    } finally {
+      console.log('[DEBUG] AdminPage: Setting contact loading to false');
+      setContactLoading(false);
+    }
+  };
+
+  const fetchContactCount = async () => {
+    try {
+      const response = await fetch('/api/admin/contact');
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setPendingContactCount(data.filter((c: ContactSubmission) => c.status === 'pending').length);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching contact count:', error);
     }
   };
 
@@ -485,6 +539,26 @@ export default function AdminPage() {
             {pendingReportsCount > 0 && (
               <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
                 {pendingReportsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('contact');
+              if (contactSubmissions.length === 0) {
+                fetchContactSubmissions();
+              }
+            }}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === 'contact'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Contact
+            {pendingContactCount > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-white text-xs rounded-full">
+                {pendingContactCount}
               </span>
             )}
           </button>
@@ -921,6 +995,24 @@ export default function AdminPage() {
                 setActiveTab('restaurants');
                 // Refresh restaurants to ensure we have the latest data
                 fetchRestaurants();
+              }}
+            />
+          )}
+        </>
+      ) : activeTab === 'contact' ? (
+        <>
+          {/* Contact Submissions */}
+          {contactLoading ? (
+            <div className="flex items-center justify-center gap-3 py-8">
+              <LoadingSpinner size="lg" />
+              <p className="text-gray-900 text-lg font-medium">Loading contact submissions...</p>
+            </div>
+          ) : (
+            <ContactSubmissionsTable
+              submissions={contactSubmissions}
+              onUpdate={() => {
+                fetchContactSubmissions();
+                fetchContactCount();
               }}
             />
           )}

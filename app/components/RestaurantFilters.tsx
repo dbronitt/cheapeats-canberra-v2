@@ -17,6 +17,7 @@ export interface FilterState {
   hasCurrentDeals: boolean;
   hasEatClub: boolean;
   hasFirstTable: boolean;
+  hasTopPicks: boolean;
 }
 
 const SUBURBS = [
@@ -35,6 +36,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
     hasCurrentDeals: false,
     hasEatClub: false,
     hasFirstTable: false,
+    hasTopPicks: false,
   };
 
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters);
@@ -91,6 +93,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
       hasCurrentDeals: false,
       hasEatClub: false,
       hasFirstTable: false,
+      hasTopPicks: false,
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
@@ -239,6 +242,21 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
             </span>
           </label>
         </div>
+      </div>
+
+      {/* Curator's Top Picks Filter */}
+      <div className="mt-4 bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-md border border-white/20">
+        <label className="flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={filters.hasTopPicks}
+            onChange={(e) => updateFilter('hasTopPicks', e.target.checked)}
+            className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+          />
+          <span className="ml-2 text-sm font-medium text-gray-800">
+            ⭐ Curator's Top Picks
+          </span>
+        </label>
       </div>
 
       {/* Reset Button */}

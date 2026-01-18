@@ -52,7 +52,7 @@ export default function MapPage() {
       
       // Default: Show only restaurants with deals (happy hour, weekly specials, current deals, EatClub, or First Table)
       // User can still filter further using the checkboxes
-      const hasAnyDealFilter = filters.hasHappyHour || filters.hasWeeklySpecials || filters.hasCurrentDeals || filters.hasEatClub || filters.hasFirstTable;
+      const hasAnyDealFilter = filters.hasHappyHour || filters.hasWeeklySpecials || filters.hasCurrentDeals || filters.hasEatClub || filters.hasFirstTable || filters.hasTopPicks;
       
       if (!hasAnyDealFilter) {
         // Default: show restaurants with any type of deal (happy hour, weekly specials, deals, EatClub, or First Table)
@@ -64,6 +64,7 @@ export default function MapPage() {
         if (filters.hasCurrentDeals) params.append('hasCurrentDeals', 'true');
         if (filters.hasEatClub) params.append('hasEatClub', 'true');
         if (filters.hasFirstTable) params.append('hasFirstTable', 'true');
+        if (filters.hasTopPicks) params.append('hasTopPicks', 'true');
       }
 
       // Map page should show ALL restaurants (no pagination limit)

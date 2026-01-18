@@ -4,4 +4,5 @@ export * from './flags';
 export * from './analytics';
 export * from './incorrectImages';
 export * from './audit-log';
+export * from './contact-submissions';
 

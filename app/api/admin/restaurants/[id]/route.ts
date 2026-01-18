@@ -65,7 +65,11 @@ export async function PATCH(
     if (body.overallRating !== undefined) trackChange('overallRating', body.overallRating ? String(body.overallRating) : null);
     if (body.imageUrls !== undefined) trackChange('imageUrls', body.imageUrls || null);
     if (body.status !== undefined) trackChange('status', body.status);
-    if (body.curatorsTopPick !== undefined) trackChange('curatorsTopPick', body.curatorsTopPick ? 'true' : 'false');
+    if (body.curatorsTopPick !== undefined) {
+      // Handle both boolean and string values, ensure it's stored as 'true' or 'false' string
+      const topPickValue = body.curatorsTopPick === true || body.curatorsTopPick === 'true' ? 'true' : 'false';
+      trackChange('curatorsTopPick', topPickValue);
+    }
 
     // Only proceed if there are actual changes
     if (Object.keys(changes).length === 0) {

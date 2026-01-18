@@ -23,7 +23,9 @@
     "backup:db": "tsx -r dotenv/config scripts/backup-database.ts dotenv_config_path=.env.local",
     "fix:deals": "tsx -r dotenv/config scripts/fix-malformed-deals.ts dotenv_config_path=.env.local",
     "find:missing": "tsx -r dotenv/config scripts/find-missing-data.ts dotenv_config_path=.env.local",
-    "update:coordinates": "tsx -r dotenv/config scripts/update-found-coordinates.ts dotenv_config_path=.env.local"
+    "update:coordinates": "tsx -r dotenv/config scripts/update-found-coordinates.ts dotenv_config_path=.env.local",
+    "migrate:top-pick": "tsx -r dotenv/config scripts/add-curators-top-pick-column.ts dotenv_config_path=.env.local",
+    "migrate:contact": "tsx -r dotenv/config scripts/create-contact-submissions-table.ts dotenv_config_path=.env.local"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

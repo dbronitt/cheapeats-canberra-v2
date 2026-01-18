@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const hasCurrentDeals = searchParams.get('hasCurrentDeals') === 'true';
     const hasEatClub = searchParams.get('hasEatClub') === 'true';
     const hasFirstTable = searchParams.get('hasFirstTable') === 'true';
+    const hasTopPicks = searchParams.get('hasTopPicks') === 'true';
     const hasDeals = searchParams.get('hasDeals') === 'true'; // Show restaurants with any deal
     const includeInactive = searchParams.get('includeInactive') === 'true'; // Admin: include inactive restaurants
     const limit = parseInt(searchParams.get('limit') || '50', 10); // Default 50 per page
@@ -153,6 +154,12 @@ export async function GET(request: Request) {
       });
     }
 
+    if (hasTopPicks) {
+      dealFilters.push((restaurant: any) => {
+        return restaurant.curatorsTopPick === 'true' || restaurant.curatorsTopPick === true;
+      });
+    }
+
     // Apply OR logic: restaurant matches if it satisfies ANY of the selected deal filters
     if (dealFilters.length > 0) {
       results = results.filter(restaurant => {
@@ -206,6 +213,7 @@ export async function GET(request: Request) {
       hasCurrentDeals,
       hasEatClub,
       hasFirstTable,
+      hasTopPicks,
       suburb,
       cuisine,
       openNow,
