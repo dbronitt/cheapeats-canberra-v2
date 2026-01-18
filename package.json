@@ -21,7 +21,9 @@
     "update:csv": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts dotenv_config_path=.env.local",
     "update:csv:create": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts --create dotenv_config_path=.env.local",
     "backup:db": "tsx -r dotenv/config scripts/backup-database.ts dotenv_config_path=.env.local",
-    "fix:deals": "tsx -r dotenv/config scripts/fix-malformed-deals.ts dotenv_config_path=.env.local"
+    "fix:deals": "tsx -r dotenv/config scripts/fix-malformed-deals.ts dotenv_config_path=.env.local",
+    "find:missing": "tsx -r dotenv/config scripts/find-missing-data.ts dotenv_config_path=.env.local",
+    "update:coordinates": "tsx -r dotenv/config scripts/update-found-coordinates.ts dotenv_config_path=.env.local"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

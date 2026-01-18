@@ -6,6 +6,7 @@ import { Restaurant } from '@/src/lib/schema/restaurants';
 import { isRestaurantOpen } from '@/src/lib/utils';
 import Link from 'next/link';
 import ReportDealModal from './ReportDealModal';
+import ReportRestaurantModal from './ReportRestaurantModal';
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -130,6 +131,10 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
     dealType: string;
     dealDescription: string;
   } | null>(null);
+  const [restaurantReportModalOpen, setRestaurantReportModalOpen] = useState(false);
+  const [reportingIssueType, setReportingIssueType] = useState<string | null>(null);
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const [reportButtonRef, setReportButtonRef] = useState<HTMLButtonElement | null>(null);
   
   // Initialize images and filter out incorrect ones
   useEffect(() => {
@@ -301,22 +306,86 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
       <div className="p-4">
         {/* Header */}
         <div className="flex items-start justify-between mb-2">
-          <h3 className="text-xl font-bold text-gray-900">{restaurant.name}</h3>
-          {isOpen !== null ? (
-            <span
-              className={`px-2 py-1 rounded text-xs font-semibold ${
-                isOpen
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}
-            >
-              {isOpen ? 'Open' : 'Closed'}
-            </span>
-          ) : (
-            <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-600">
-              Hours Unknown
-            </span>
-          )}
+          <h3 className="text-xl font-bold text-gray-900 flex-1 min-w-0 truncate">{restaurant.name}</h3>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="relative">
+              <button
+                onClick={() => setShowReportMenu(!showReportMenu)}
+                className="text-gray-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-gray-100"
+                title="Report issue"
+                aria-label="Report restaurant issue"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {showReportMenu && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowReportMenu(false)}
+                  />
+                  <div className="absolute right-0 top-6 z-[9999] bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px]">
+                    <button
+                      onClick={() => {
+                        setReportingIssueType('Restaurant now closed');
+                        setRestaurantReportModalOpen(true);
+                        setShowReportMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Restaurant now closed
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReportingIssueType('Hours are wrong');
+                        setRestaurantReportModalOpen(true);
+                        setShowReportMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Hours are wrong
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReportingIssueType('Cuisine is wrong');
+                        setRestaurantReportModalOpen(true);
+                        setShowReportMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Cuisine is wrong
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReportingIssueType('Other');
+                        setRestaurantReportModalOpen(true);
+                        setShowReportMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      Other
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            {isOpen !== null ? (
+              <span
+                className={`px-2 py-1 rounded text-xs font-semibold ${
+                  isOpen
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}
+              >
+                {isOpen ? 'Open' : 'Closed'}
+              </span>
+            ) : (
+              <span className="px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-600">
+                Hours Unknown
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Cuisine & Price */}
@@ -628,6 +697,23 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
           dealDescription={reportingDeal.dealDescription}
           onReportSubmitted={() => {
             console.log('[DEBUG] Report submitted successfully');
+          }}
+        />
+      )}
+
+      {/* Report Restaurant Modal */}
+      {reportingIssueType && (
+        <ReportRestaurantModal
+          isOpen={restaurantReportModalOpen}
+          onClose={() => {
+            setRestaurantReportModalOpen(false);
+            setReportingIssueType(null);
+          }}
+          restaurantId={restaurant.id}
+          restaurantName={restaurant.name}
+          issueType={reportingIssueType}
+          onReportSubmitted={() => {
+            console.log('[DEBUG] Restaurant report submitted successfully');
           }}
         />
       )}
