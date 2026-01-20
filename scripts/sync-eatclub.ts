@@ -5,7 +5,7 @@ require('dotenv').config({ path: '.env.local' });
 const { db } = require('../src/lib/db');
 const { restaurants } = require('../src/lib/schema');
 const { eq, isNotNull } = require('drizzle-orm');
-const { scrapeEatClubVenue, searchEatClubCanberra, matchEatClubToRestaurant, filterEatClubLogos } = require('../src/lib/eatclub');
+const { scrapeEatClubVenue, searchEatClubCanberra, matchEatClubToRestaurant, filterEatClubLogos, fetchEatClubCanberraVenueUrls } = require('../src/lib/eatclub');
 
 interface SyncStats {
   total: number;
@@ -105,6 +105,8 @@ async function main() {
   try {
     // Option 1: Search EatClub for all Canberra venues
     console.log('🔍 Searching EatClub for Canberra venues...');
+    const eatClubVenueUrls = await fetchEatClubCanberraVenueUrls();
+    const eatClubVenueUrlSet = new Set(eatClubVenueUrls.map((u: string) => (u || '').split('?')[0]));
     const eatClubVenues = await searchEatClubCanberra();
     console.log(`   Found ${eatClubVenues.length} venues on EatClub\n`);
 
@@ -211,7 +213,7 @@ async function main() {
     }
 
     // Check for restaurants with EatClub URLs that are no longer in EatClub search results
-    if (eatClubVenues.length > 0) {
+    if (eatClubVenueUrls.length > 0) {
       console.log('\n🔍 Checking for restaurants no longer found in EatClub...');
       
       // Get all restaurants with EatClub URLs
@@ -230,38 +232,41 @@ async function main() {
       console.log(`   Checking ${allRestaurantsWithEatClub.length} restaurants with EatClub URLs...`);
 
       for (const restaurant of allRestaurantsWithEatClub) {
-        // Check if this restaurant matches any venue in the EatClub search results
-        let found = false;
-        
-        for (const venue of eatClubVenues) {
-          if (matchEatClubToRestaurant(venue, restaurant.name, restaurant.suburb || undefined)) {
-            found = true;
-            break;
-          }
-          
-          // Also check by URL/slug match
-          if (restaurant.eatClubUrl) {
-            const restaurantSlug = restaurant.eatClubUrl.match(/venue\/([^\/\?]+)/)?.[1];
-            const venueSlug = venue.slug || venue.url.match(/venue\/([^\/\?]+)/)?.[1];
-            
-            if (restaurantSlug && venueSlug && restaurantSlug.toLowerCase() === venueSlug.toLowerCase()) {
-              found = true;
-              break;
-            }
-          }
-        }
+        const restaurantUrl = (restaurant.eatClubUrl || '').split('?')[0];
+        const restaurantSlug = restaurantUrl.match(/venue\/([^\/\?]+)/)?.[1]?.toLowerCase();
+
+        const urlMatchInCanberraList = restaurantUrl && eatClubVenueUrlSet.has(restaurantUrl);
+        const slugMatchInCanberraList =
+          !!restaurantSlug && Array.from(eatClubVenueUrlSet).some((u: string) => u.toLowerCase().includes(`/venue/${restaurantSlug}`));
+
+        const found = urlMatchInCanberraList || slugMatchInCanberraList;
 
         if (!found) {
-          console.log(`   ❌ Restaurant not found in EatClub: ${restaurant.name} (ID: ${restaurant.id})`);
-          
-          // Remove EatClub URL from the restaurant
+          // Extra safety: only remove if the venue page is actually gone (404).
+          let confirmedGone = false;
+          try {
+            if (restaurantUrl) {
+              const resp = await fetch(restaurantUrl, { redirect: 'follow' });
+              if (resp.status === 404) confirmedGone = true;
+            }
+          } catch (e) {
+            confirmedGone = false;
+          }
+
+          if (!confirmedGone) {
+            console.log(`   ⚠️  Skipping removal (not confirmed gone): ${restaurant.name} (ID: ${restaurant.id}) ${restaurantUrl}`);
+            continue;
+          }
+
+          console.log(`   ❌ Confirmed gone (404), removing EatClub URL: ${restaurant.name} (ID: ${restaurant.id})`);
+
           await db.update(restaurants)
             .set({
               eatClubUrl: null,
               updatedAt: new Date(),
             })
             .where(eq(restaurants.id, restaurant.id));
-          
+
           stats.removed++;
           console.log(`   ✅ Removed EatClub URL from restaurant`);
         }

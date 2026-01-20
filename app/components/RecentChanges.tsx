@@ -22,7 +22,10 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [revertingId, setRevertingId] = useState<number | null>(null);
+  const [bulkReverting, setBulkReverting] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchChanges();
@@ -35,6 +38,15 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
       const data = await response.json();
       if (data.success) {
         setLogs(data.logs || []);
+        // Drop selections that are no longer visible
+        setSelectedIds(prev => {
+          const visible = new Set<number>((data.logs || []).map((l: ChangeLog) => l.id));
+          const next = new Set<number>();
+          prev.forEach(id => {
+            if (visible.has(id)) next.add(id);
+          });
+          return next;
+        });
       }
     } catch (error) {
       console.error('Error fetching changes:', error);
@@ -62,7 +74,8 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
       }
 
       alert('Change reverted successfully');
-      fetchChanges();
+      setExpandedId(null);
+      await fetchChanges();
       if (onRevert) {
         onRevert();
       }
@@ -71,6 +84,96 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
       alert(error instanceof Error ? error.message : 'Failed to revert change');
     } finally {
       setRevertingId(null);
+    }
+  };
+
+  const toggleSelected = (logId: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(logId)) next.delete(logId);
+      else next.add(logId);
+      return next;
+    });
+  };
+
+  const toggleSelectedWithShift = (logId: number, checked: boolean, isShift: boolean) => {
+    // If shift is held and we have an anchor, select a range in the current visible order.
+    if (isShift && lastSelectedId !== null) {
+      const idsInOrder = logs.map(l => l.id);
+      const startIdx = idsInOrder.indexOf(lastSelectedId);
+      const endIdx = idsInOrder.indexOf(logId);
+
+      if (startIdx !== -1 && endIdx !== -1) {
+        const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+        const range = idsInOrder.slice(from, to + 1);
+
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          for (const id of range) {
+            if (checked) next.add(id);
+            else next.delete(id);
+          }
+          return next;
+        });
+
+        setLastSelectedId(logId);
+        return;
+      }
+    }
+
+    // Fallback: normal single toggle
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(logId);
+      else next.delete(logId);
+      return next;
+    });
+    setLastSelectedId(logId);
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(logs.map(l => l.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkRevert = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    if (!confirm(`Revert ${ids.length} selected change(s)?`)) {
+      return;
+    }
+
+    setBulkReverting(true);
+    try {
+      console.log('[DEBUG] Bulk revert selected logIds:', ids);
+      const response = await fetch('/api/admin/audit-log/revert-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logIds: ids }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to bulk revert');
+      }
+
+      const successCount = Array.isArray(data.results) ? data.results.filter((r: any) => r.success).length : 0;
+      const failCount = Array.isArray(data.results) ? data.results.filter((r: any) => !r.success).length : 0;
+
+      alert(`Bulk revert complete: ${successCount} succeeded, ${failCount} failed`);
+      clearSelection();
+      setExpandedId(null);
+      await fetchChanges();
+      if (onRevert) onRevert();
+    } catch (error) {
+      console.error('Error bulk reverting changes:', error);
+      alert(error instanceof Error ? error.message : 'Failed to bulk revert');
+    } finally {
+      setBulkReverting(false);
     }
   };
 
@@ -125,13 +228,43 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden">
       <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Recent Changes</h2>
-        <button
-          onClick={fetchChanges}
-          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">Recent Changes</h2>
+          {selectedIds.size > 0 && (
+            <span className="text-xs text-gray-600">
+              {selectedIds.size} selected
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={selectAllVisible}
+            disabled={logs.length === 0}
+            className="text-sm text-gray-600 hover:text-gray-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Select all
+          </button>
+          <button
+            onClick={clearSelection}
+            disabled={selectedIds.size === 0}
+            className="text-sm text-gray-600 hover:text-gray-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Clear
+          </button>
+          <button
+            onClick={handleBulkRevert}
+            disabled={selectedIds.size === 0 || bulkReverting}
+            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {bulkReverting ? 'Reverting…' : 'Revert selected'}
+          </button>
+          <button
+            onClick={fetchChanges}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
@@ -143,12 +276,22 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
           logs.map((log) => {
             const isExpanded = expandedId === log.id;
             const changeCount = Object.keys(log.changes || {}).length;
+            const isSelected = selectedIds.has(log.id);
 
             return (
               <div key={log.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          toggleSelectedWithShift(log.id, e.target.checked, (e as any).nativeEvent?.shiftKey === true);
+                        }}
+                        aria-label={`Select change ${log.id}`}
+                      />
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getActionColor(
                           log.action

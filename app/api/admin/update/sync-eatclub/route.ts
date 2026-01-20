@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/src/lib/db';
 import { restaurants } from '@/src/lib/schema';
 import { eq, isNotNull } from 'drizzle-orm';
-import { scrapeEatClubVenue, searchEatClubCanberra, matchEatClubToRestaurant, filterEatClubLogos } from '@/src/lib/eatclub';
+import { scrapeEatClubVenue, searchEatClubCanberra, matchEatClubToRestaurant, filterEatClubLogos, fetchEatClubCanberraVenueUrls } from '@/src/lib/eatclub';
+import { logChange } from '@/src/lib/audit-log';
 
 interface SyncStats {
   total: number;
@@ -19,6 +20,15 @@ async function updateRestaurantWithEatClub(
   eatClubVenue: any,
   hasDeal: boolean
 ) {
+  // Get current restaurant state for audit log (and for calculating diffs)
+  const currentRestaurant = await db
+    .select()
+    .from(restaurants)
+    .where(eq(restaurants.id, restaurantId))
+    .limit(1);
+
+  const previousState = currentRestaurant[0];
+
   const currentImageUrls = (await db.select({ imageUrls: restaurants.imageUrls })
     .from(restaurants)
     .where(eq(restaurants.id, restaurantId))
@@ -63,14 +73,47 @@ async function updateRestaurantWithEatClub(
     }
   }
 
-  await db.update(restaurants)
+  const updated = await db.update(restaurants)
     .set({
       eatClubUrl: eatClubVenue.url,
       imageUrls: finalImages.length > 0 ? finalImages : null,
       deals: deals.length > 0 ? deals : null,
       updatedAt: new Date(),
     })
-    .where(eq(restaurants.id, restaurantId));
+    .where(eq(restaurants.id, restaurantId))
+    .returning();
+
+  const updatedRestaurant = updated[0];
+
+  // Log to Recent Changes (audit log) if there were meaningful field changes.
+  if (previousState && updatedRestaurant) {
+    const changes: Record<string, { old: any; new: any }> = {};
+    const track = (field: keyof typeof previousState) => {
+      const oldValue = (previousState as any)[field];
+      const newValue = (updatedRestaurant as any)[field];
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes[String(field)] = { old: oldValue, new: newValue };
+      }
+    };
+
+    track('eatClubUrl' as any);
+    track('imageUrls' as any);
+    track('deals' as any);
+
+    if (Object.keys(changes).length > 0) {
+      const logged = await logChange({
+        restaurantId: updatedRestaurant.id,
+        restaurantName: updatedRestaurant.name,
+        action: 'update',
+        changedBy: 'eatclub-sync',
+        changes,
+        previousState,
+      });
+      if (!logged) {
+        console.warn('[AUDIT] Failed to log EatClub sync update for restaurant', updatedRestaurant.id);
+      }
+    }
+  }
 }
 
 export async function POST() {
@@ -87,7 +130,10 @@ export async function POST() {
       errors: 0,
     };
 
-    // Search EatClub for all Canberra venues
+    // Discover venues (NOTE: searchEatClubCanberra only scrapes the first ~100 venue details).
+    // For any "removal" decisions, we must use the FULL URL list to avoid false removals.
+    const eatClubVenueUrls = await fetchEatClubCanberraVenueUrls();
+    const eatClubVenueUrlSet = new Set(eatClubVenueUrls);
     const eatClubVenues = await searchEatClubCanberra();
 
     // Process restaurants that already have EatClub URLs
@@ -157,7 +203,8 @@ export async function POST() {
     }
 
     // Check for restaurants no longer found in EatClub
-    if (eatClubVenues.length > 0) {
+    // IMPORTANT: never remove based on the scraped venue DETAILS list (it's limited).
+    if (eatClubVenueUrls.length > 0) {
       const allRestaurantsWithEatClub = await db
         .select({
           id: restaurants.id,
@@ -169,32 +216,72 @@ export async function POST() {
         .where(isNotNull(restaurants.eatClubUrl));
 
       for (const restaurant of allRestaurantsWithEatClub) {
-        let found = false;
-        
-        for (const venue of eatClubVenues) {
-          if (matchEatClubToRestaurant(venue, restaurant.name, restaurant.suburb || undefined)) {
-            found = true;
-            break;
-          }
-          
-          if (restaurant.eatClubUrl) {
-            const restaurantSlug = restaurant.eatClubUrl.match(/venue\/([^\/\?]+)/)?.[1];
-            const venueSlug = venue.slug || venue.url.match(/venue\/([^\/\?]+)/)?.[1];
-            
-            if (restaurantSlug && venueSlug && restaurantSlug.toLowerCase() === venueSlug.toLowerCase()) {
-              found = true;
-              break;
-            }
-          }
-        }
+        const restaurantUrl = restaurant.eatClubUrl || '';
+        const restaurantSlug = restaurantUrl.match(/venue\/([^\/\?]+)/)?.[1]?.toLowerCase();
+        const slugMatchInCanberraList =
+          !!restaurantSlug &&
+          Array.from(eatClubVenueUrlSet).some(url => url.toLowerCase().includes(`/venue/${restaurantSlug}`));
+
+        const urlMatchInCanberraList =
+          !!restaurantUrl &&
+          eatClubVenueUrlSet.has(restaurantUrl.split('?')[0]);
+
+        const found = slugMatchInCanberraList || urlMatchInCanberraList;
 
         if (!found) {
-          await db.update(restaurants)
+          // Extra safety: only remove if the venue page is actually gone.
+          // If EatClub changes pagination/limits, we don't want to wipe URLs accidentally.
+          let confirmedGone = false;
+          try {
+            if (restaurantUrl) {
+              const resp = await fetch(restaurantUrl, { redirect: 'manual' as any });
+              if (resp.status === 404) confirmedGone = true;
+            }
+          } catch (e) {
+            // Network error: do NOT remove.
+            confirmedGone = false;
+          }
+
+          if (!confirmedGone) {
+            console.warn('[API] Skipping EatClub URL removal (not confirmed gone):', restaurant.name, restaurant.id, restaurantUrl);
+            continue;
+          }
+
+          // Get current restaurant state for audit log
+          const currentRestaurant = await db
+            .select()
+            .from(restaurants)
+            .where(eq(restaurants.id, restaurant.id))
+            .limit(1);
+          const previousState = currentRestaurant[0];
+
+          const updated = await db.update(restaurants)
             .set({
               eatClubUrl: null,
               updatedAt: new Date(),
             })
-            .where(eq(restaurants.id, restaurant.id));
+            .where(eq(restaurants.id, restaurant.id))
+            .returning();
+
+          const updatedRestaurant = updated[0];
+
+          if (previousState && updatedRestaurant) {
+            const changes: Record<string, { old: any; new: any }> = {
+              eatClubUrl: { old: previousState.eatClubUrl, new: null },
+            };
+
+            const logged = await logChange({
+              restaurantId: updatedRestaurant.id,
+              restaurantName: updatedRestaurant.name,
+              action: 'update',
+              changedBy: 'eatclub-sync',
+              changes,
+              previousState,
+            });
+            if (!logged) {
+              console.warn('[AUDIT] Failed to log EatClub URL removal for restaurant', updatedRestaurant.id);
+            }
+          }
           
           stats.removed++;
         }

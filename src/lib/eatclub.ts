@@ -286,6 +286,113 @@ export async function scrapeEatClubVenue(venueUrl: string, retries: number = 3):
  * Search EatClub for restaurants in Canberra using Puppeteer
  * This uses browser automation to handle JavaScript-rendered content
  */
+export async function fetchEatClubCanberraVenueUrls(): Promise<string[]> {
+  let browser: any = null;
+
+  try {
+    const puppeteer = await import('puppeteer');
+    const searchUrl = 'https://eatclub.com.au/venues/canberra';
+
+    console.log('   🌐 Launching browser (URLs only)...');
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    // Navigate through pages and collect /venue/ links
+    const allVenueUrls = new Set<string>();
+    let currentPage = 1;
+    const maxPages = 12; // leave some buffer
+
+    const extractUrlsOnPage = async (): Promise<string[]> => {
+      return await page.evaluate(() => {
+        const urls = new Set<string>();
+        const allLinks = document.querySelectorAll('a[href*="/venue/"]');
+        allLinks.forEach((link: any) => {
+          const href = link.getAttribute('href');
+          if (!href) return;
+          const venueMatch = href.match(/\/venue\/([a-z0-9-]+)(?:\/|$|\?|#)/i);
+          if (!venueMatch || !venueMatch[1]) return;
+
+          const slug = venueMatch[1];
+          const categoryWords = [
+            'melbourne',
+            'sydney',
+            'brisbane',
+            'perth',
+            'adelaide',
+            'canberra',
+            'cuisine',
+            'category',
+            'venues',
+            'venue',
+            'search',
+            'location',
+          ];
+          if (categoryWords.includes(slug.toLowerCase())) return;
+
+          let fullUrl = href.startsWith('http')
+            ? href
+            : href.startsWith('/')
+              ? `https://eatclub.com.au${href}`
+              : `https://eatclub.com.au/${href}`;
+
+          const cleanMatch = fullUrl.match(/(https?:\/\/eatclub\.com\.au\/venue\/[a-z0-9-]+)/i);
+          if (cleanMatch && cleanMatch[1]) {
+            urls.add(cleanMatch[1]);
+          }
+        });
+        return Array.from(urls);
+      });
+    };
+
+    console.log('   📍 Navigating to EatClub search page (URLs only)...');
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    console.log(`   📄 Extracting restaurants from page ${currentPage}...`);
+    let pageUrls = await extractUrlsOnPage();
+    pageUrls.forEach(u => allVenueUrls.add(u));
+    console.log(`   ✅ Found ${pageUrls.length} restaurants on page ${currentPage} (total so far: ${allVenueUrls.size})`);
+
+    while (currentPage < maxPages) {
+      currentPage++;
+      const nextPageUrl = `${searchUrl}?page=${currentPage}`;
+      console.log(`   📄 Navigating to page ${currentPage}: ${nextPageUrl}`);
+
+      await page.goto(nextPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      pageUrls = await extractUrlsOnPage();
+      if (pageUrls.length === 0) {
+        console.log(`   ⚠️  No restaurants found on page ${currentPage}, stopping pagination`);
+        break;
+      }
+      pageUrls.forEach(u => allVenueUrls.add(u));
+      console.log(`   ✅ Found ${pageUrls.length} restaurants on page ${currentPage} (total so far: ${allVenueUrls.size})`);
+    }
+
+    const uniqueUrls = Array.from(allVenueUrls);
+    await browser.close();
+    browser = null;
+
+    console.log(`   ✅ Found ${uniqueUrls.length} unique venue URLs`);
+    return uniqueUrls;
+  } catch (error) {
+    if (browser) {
+      await browser.close();
+    }
+    console.error('Error fetching EatClub venue URLs:', error);
+    return [];
+  }
+}
+
 export async function searchEatClubCanberra(): Promise<EatClubVenue[]> {
   let browser: any = null;
   
@@ -812,7 +919,9 @@ export async function searchEatClubCanberra(): Promise<EatClubVenue[]> {
     console.log(`   📥 Scraping venue details...`);
     
     const venues: EatClubVenue[] = [];
-    const urlsArray = uniqueUrls.slice(0, 100); // Limit to first 100
+    // IMPORTANT: scrape ALL venues for correctness (no artificial cap).
+    // This can take several minutes due to rate limiting (1s between venues).
+    const urlsArray = uniqueUrls;
     
     // Scrape each venue page
     for (let i = 0; i < urlsArray.length; i++) {
