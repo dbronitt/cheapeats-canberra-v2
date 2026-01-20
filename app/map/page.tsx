@@ -49,6 +49,7 @@ export default function MapPage() {
       if (filters.suburb) params.append('suburb', filters.suburb);
       if (filters.cuisine) params.append('cuisine', filters.cuisine);
       if (filters.openNow) params.append('openNow', 'true');
+      if (filters.weeklySpecialDay) params.append('weeklySpecialDay', filters.weeklySpecialDay);
       
       // Default: Show only restaurants with deals (happy hour, weekly specials, current deals, EatClub, or First Table)
       // User can still filter further using the checkboxes

@@ -62,6 +62,7 @@ export default function AdminPage() {
     openNow: false,
     hasHappyHour: false,
     hasWeeklySpecials: false,
+    weeklySpecialDay: '',
     hasCurrentDeals: false,
     hasEatClub: false,
     hasFirstTable: false,

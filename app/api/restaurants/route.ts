@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || undefined;
     const hasHappyHour = searchParams.get('hasHappyHour') === 'true';
     const hasWeeklySpecials = searchParams.get('hasWeeklySpecials') === 'true';
+    const weeklySpecialDay = searchParams.get('weeklySpecialDay') || undefined;
     const hasCurrentDeals = searchParams.get('hasCurrentDeals') === 'true';
     const hasEatClub = searchParams.get('hasEatClub') === 'true';
     const hasFirstTable = searchParams.get('hasFirstTable') === 'true';
@@ -168,6 +169,37 @@ export async function GET(request: Request) {
       });
     }
 
+    // Additional in-memory filter: weekly specials on a specific day, if requested.
+    if (weeklySpecialDay) {
+      const normalizeDay = (value: string): string | null => {
+        const v = value.toLowerCase().trim();
+        if (!v) return null;
+        if (v.startsWith('mon')) return 'monday';
+        if (v.startsWith('tue')) return 'tuesday';
+        if (v.startsWith('wed')) return 'wednesday';
+        if (v.startsWith('thu')) return 'thursday';
+        if (v.startsWith('fri')) return 'friday';
+        if (v.startsWith('sat')) return 'saturday';
+        if (v.startsWith('sun')) return 'sunday';
+        return null;
+      };
+
+      const targetDay = normalizeDay(weeklySpecialDay);
+
+      if (targetDay) {
+        results = results.filter(restaurant => {
+          const weeklySpecials = restaurant.weeklySpecials as Array<{ day?: string }> | null;
+          if (!weeklySpecials || !Array.isArray(weeklySpecials) || weeklySpecials.length === 0) {
+            return false;
+          }
+          return weeklySpecials.some(special => {
+            const d = special && typeof special.day === 'string' ? normalizeDay(special.day) : null;
+            return d === targetDay;
+          });
+        });
+      }
+    }
+
     // Filter out incorrect images from results
     const incorrectImageUrls = await db.select({ imageUrl: incorrectImages.imageUrl })
       .from(incorrectImages);
@@ -210,6 +242,7 @@ export async function GET(request: Request) {
       hasDeals,
       hasHappyHour,
       hasWeeklySpecials,
+      weeklySpecialDay,
       hasCurrentDeals,
       hasEatClub,
       hasFirstTable,

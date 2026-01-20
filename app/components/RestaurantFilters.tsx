@@ -14,6 +14,7 @@ export interface FilterState {
   openNow: boolean;
   hasHappyHour: boolean;
   hasWeeklySpecials: boolean;
+  weeklySpecialDay: string;
   hasCurrentDeals: boolean;
   hasEatClub: boolean;
   hasFirstTable: boolean;
@@ -33,6 +34,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
     openNow: false,
     hasHappyHour: false,
     hasWeeklySpecials: false,
+    weeklySpecialDay: '',
     hasCurrentDeals: false,
     hasEatClub: false,
     hasFirstTable: false,
@@ -90,6 +92,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
       openNow: false,
       hasHappyHour: false,
       hasWeeklySpecials: false,
+      weeklySpecialDay: '',
       hasCurrentDeals: false,
       hasEatClub: false,
       hasFirstTable: false,
@@ -176,7 +179,7 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
         <label className="block text-sm font-medium text-gray-800 mb-2">
           Deal Types <span className="text-xs text-gray-600">(select multiple - shows restaurants with any selected type)</span>
         </label>
-        <div className="flex gap-4 flex-wrap">
+        <div className="flex gap-4 flex-wrap items-center">
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -199,6 +202,23 @@ export default function RestaurantFilters({ onFilterChange, initialFilters }: Re
               📅 Weekly Specials
             </span>
           </label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-600">on</span>
+            <select
+              value={filters.weeklySpecialDay}
+              onChange={(e) => updateFilter('weeklySpecialDay', e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">Any day</option>
+              <option value="monday">Monday</option>
+              <option value="tuesday">Tuesday</option>
+              <option value="wednesday">Wednesday</option>
+              <option value="thursday">Thursday</option>
+              <option value="friday">Friday</option>
+              <option value="saturday">Saturday</option>
+              <option value="sunday">Sunday</option>
+            </select>
+          </div>
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"

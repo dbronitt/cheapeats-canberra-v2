@@ -10,6 +10,7 @@ const defaultFilters: FilterState = {
   openNow: false,
   hasHappyHour: false,
   hasWeeklySpecials: false,
+  weeklySpecialDay: '',
   hasCurrentDeals: false,
   hasEatClub: false,
   hasFirstTable: false,
