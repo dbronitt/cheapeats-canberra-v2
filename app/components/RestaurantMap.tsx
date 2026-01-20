@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { Icon, DivIcon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -11,24 +12,43 @@ function MapResizeHandler() {
   const map = useMap();
   
   useEffect(() => {
+    let isActive = true;
+    const pendingTimers: number[] = [];
+
+    const safeInvalidate = (reason: string) => {
+      if (!isActive) return;
+      try {
+        const container = map.getContainer?.();
+        // If the map has been unmounted, Leaflet's internal container refs can be undefined.
+        if (!container || !container.isConnected) return;
+        // Leaflet expects a real container with internal positioning data
+        map.invalidateSize();
+      } catch (e) {
+        // Swallow: resize can race with unmount during navigation/hot reload
+        console.warn('[DEBUG] MapResizeHandler: invalidateSize skipped/failed:', reason, e);
+      }
+    };
+
     // Force map to recalculate size after mount with multiple attempts
     const timers = [
-      setTimeout(() => map.invalidateSize(), 100),
-      setTimeout(() => map.invalidateSize(), 300),
-      setTimeout(() => map.invalidateSize(), 500),
-      setTimeout(() => map.invalidateSize(), 1000),
+      setTimeout(() => safeInvalidate('initial-100ms'), 100),
+      setTimeout(() => safeInvalidate('initial-300ms'), 300),
+      setTimeout(() => safeInvalidate('initial-500ms'), 500),
+      setTimeout(() => safeInvalidate('initial-1000ms'), 1000),
     ];
+    pendingTimers.push(...(timers as unknown as number[]));
     
     // Handle window resize
     const handleResize = () => {
-      map.invalidateSize();
+      safeInvalidate('window-resize');
     };
     
     // Use ResizeObserver to detect container size changes
     const container = map.getContainer();
     const resizeObserver = new ResizeObserver(() => {
       // Force immediate resize
-      setTimeout(() => map.invalidateSize(), 0);
+      const t = window.setTimeout(() => safeInvalidate('resize-observer'), 0);
+      pendingTimers.push(t);
     });
     
     if (container) {
@@ -44,13 +64,16 @@ function MapResizeHandler() {
     
     // Additional resize attempts after longer delays
     const longTimers = [
-      setTimeout(() => map.invalidateSize(), 2000),
-      setTimeout(() => map.invalidateSize(), 3000),
+      setTimeout(() => safeInvalidate('initial-2000ms'), 2000),
+      setTimeout(() => safeInvalidate('initial-3000ms'), 3000),
     ];
+    pendingTimers.push(...(longTimers as unknown as number[]));
     
     return () => {
+      isActive = false;
       timers.forEach(timer => clearTimeout(timer));
       longTimers.forEach(timer => clearTimeout(timer));
+      pendingTimers.forEach(t => clearTimeout(t));
       window.removeEventListener('resize', handleResize);
       resizeObserver.disconnect();
     };
@@ -121,7 +144,6 @@ interface RestaurantMapProps {
   restaurants: Restaurant[];
   center?: [number, number];
   zoom?: number;
-  onRestaurantClick?: (restaurant: Restaurant) => void;
 }
 
 // Component to fit map bounds to markers
@@ -147,9 +169,9 @@ export default function RestaurantMap({
   restaurants,
   center = [-35.2809, 149.1300], // Canberra center
   zoom = 13,
-  onRestaurantClick,
 }: RestaurantMapProps) {
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
   
   const validRestaurants = restaurants.filter(
     r => r.latitude && r.longitude && r.status === 'active'
@@ -192,13 +214,6 @@ export default function RestaurantMap({
               key={restaurant.id}
               position={[lat, lng]}
               icon={markerIcon}
-              eventHandlers={{
-                click: () => {
-                  if (onRestaurantClick) {
-                    onRestaurantClick(restaurant);
-                  }
-                },
-              }}
             >
               <Popup>
                 <div className="p-2 min-w-[200px]">
@@ -207,7 +222,8 @@ export default function RestaurantMap({
                     className="font-bold text-lg mb-1 text-blue-600 hover:text-blue-800 hover:underline block cursor-pointer"
                     onClick={(e) => {
                       e.preventDefault();
-                      window.location.href = `/?restaurantId=${restaurant.id}`;
+                      console.log('[DEBUG] Map popup: name clicked, navigating to main page:', restaurant.id, restaurant.name);
+                      router.push(`/?restaurantId=${restaurant.id}`);
                     }}
                   >
                     {restaurant.name}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Restaurant } from '@/src/lib/schema/restaurants';
 import RestaurantFilters, { FilterState } from './components/RestaurantFilters';
 import RestaurantList from './components/RestaurantList';
@@ -16,6 +16,7 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const { filters, setFilters, isLoaded } = useFilterPersistence();
+  const hasResolvedRestaurantPageRef = useRef(false);
 
   useEffect(() => {
     console.log('[DEBUG] Home component mounted');
@@ -122,6 +123,86 @@ export default function Home() {
       return () => clearTimeout(timeout);
     }
   }, [filters, isLoaded, currentPage, fetchRestaurants]);
+
+  // If we landed here from the map (/?restaurantId=...), ensure we're on the correct page
+  // before trying to scroll/highlight.
+  useEffect(() => {
+    if (!isLoaded || typeof window === 'undefined') return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const restaurantId = urlParams.get('restaurantId');
+    if (!restaurantId) return;
+
+    // Avoid loops: we only resolve the target page once per page load.
+    if (hasResolvedRestaurantPageRef.current) return;
+    hasResolvedRestaurantPageRef.current = true;
+
+    const resolveTargetPage = async () => {
+      try {
+        console.log('[DEBUG] Resolving target page for restaurantId:', restaurantId);
+
+        const params = new URLSearchParams();
+        if (filters.search) params.append('search', filters.search);
+        if (filters.suburb) params.append('suburb', filters.suburb);
+        if (filters.cuisine) params.append('cuisine', filters.cuisine);
+        if (filters.openNow) params.append('openNow', 'true');
+
+        const hasAnyDealFilter =
+          filters.hasHappyHour ||
+          filters.hasWeeklySpecials ||
+          filters.hasCurrentDeals ||
+          filters.hasEatClub ||
+          filters.hasFirstTable ||
+          filters.hasTopPicks;
+
+        if (!hasAnyDealFilter) {
+          params.append('hasDeals', 'true');
+        } else {
+          if (filters.hasHappyHour) params.append('hasHappyHour', 'true');
+          if (filters.hasWeeklySpecials) params.append('hasWeeklySpecials', 'true');
+          if (filters.hasCurrentDeals) params.append('hasCurrentDeals', 'true');
+          if (filters.hasEatClub) params.append('hasEatClub', 'true');
+          if (filters.hasFirstTable) params.append('hasFirstTable', 'true');
+          if (filters.hasTopPicks) params.append('hasTopPicks', 'true');
+        }
+
+        // Pull the full filtered set (same ordering logic as API), find index, then compute page.
+        params.append('limit', '10000');
+        params.append('page', '1');
+
+        const url = `/api/restaurants?${params.toString()}`;
+        console.log('[DEBUG] Resolving page: fetching full list from:', url);
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const fullList: Restaurant[] = Array.isArray(data?.restaurants) ? data.restaurants : Array.isArray(data) ? data : [];
+
+        const idx = fullList.findIndex(r => String(r.id) === String(restaurantId));
+        console.log('[DEBUG] Resolving page: restaurant index in filtered list:', idx, 'total:', fullList.length);
+
+        if (idx < 0) {
+          console.log('[DEBUG] Resolving page: restaurant not found in current filtered results (may be inactive or filtered out)');
+          return;
+        }
+
+        const limitPerPage = 50;
+        const targetPage = Math.floor(idx / limitPerPage) + 1;
+        console.log('[DEBUG] Resolving page: targetPage computed as', targetPage, '(currentPage:', currentPage, ')');
+
+        if (targetPage !== currentPage) {
+          setCurrentPage(targetPage);
+        }
+      } catch (e) {
+        console.error('[DEBUG] Failed to resolve restaurant page:', e);
+      }
+    };
+
+    resolveTargetPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
 
   // Scroll to restaurant when restaurantId is in URL (from map click)
   useEffect(() => {
