@@ -18,11 +18,7 @@ export default function Home() {
   const { filters, setFilters, isLoaded } = useFilterPersistence();
   const hasResolvedRestaurantPageRef = useRef(false);
 
-  useEffect(() => {
-    console.log('[DEBUG] Home component mounted');
-    console.log('[DEBUG] isLoaded:', isLoaded);
-    console.log('[DEBUG] filters:', filters);
-  }, []);
+  // Removed debug logging for production performance
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -30,7 +26,6 @@ export default function Home() {
   }, [filters]);
 
   const fetchRestaurants = useCallback(async () => {
-    console.log('[DEBUG] fetchRestaurants called');
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -62,61 +57,46 @@ export default function Home() {
       params.append('page', currentPage.toString());
 
       const url = `/api/restaurants?${params.toString()}`;
-      console.log('[DEBUG] Fetching from:', url);
       const response = await fetch(url);
-      console.log('[DEBUG] Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('[DEBUG] Response data:', data);
-      console.log('[DEBUG] Response data type:', typeof data);
-      console.log('[DEBUG] data.restaurants exists?', !!data.restaurants);
-      console.log('[DEBUG] data.restaurants is array?', Array.isArray(data.restaurants));
-      console.log('[DEBUG] data.restaurants length:', data.restaurants?.length);
       
       // Handle new paginated response format
       if (data.restaurants && Array.isArray(data.restaurants)) {
-        console.log('[DEBUG] Setting restaurants state with', data.restaurants.length, 'items');
         setRestaurants(data.restaurants);
         setTotalPages(data.pagination?.totalPages || 1);
         setTotalCount(data.pagination?.total || 0);
-        console.log('[DEBUG] State updated with', data.restaurants.length, 'restaurants');
-        console.log('[DEBUG] Pagination:', data.pagination);
-        console.log('[DEBUG] First restaurant:', data.restaurants[0]?.name);
       } else if (Array.isArray(data)) {
         // Fallback for old format (backward compatibility)
-        console.log('[DEBUG] Using legacy format, setting', data.length, 'restaurants');
         setRestaurants(data);
         setTotalPages(1);
         setTotalCount(data.length);
-        console.log('[DEBUG] State updated with', data.length, 'restaurants (legacy format)');
       } else {
-        console.error('[DEBUG] ERROR: Invalid response format!', data);
-        console.error('[DEBUG] Data keys:', Object.keys(data || {}));
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Invalid API response format:', data);
+        }
         throw new Error('Invalid API response format');
       }
     } catch (error) {
-      console.error('[DEBUG] Error fetching restaurants:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error fetching restaurants:', error);
+      }
     } finally {
-      console.log('[DEBUG] Setting loading to false');
       setLoading(false);
     }
   }, [filters, currentPage]);
 
   useEffect(() => {
     // Only fetch restaurants after filters are loaded from localStorage
-    console.log('[DEBUG] useEffect triggered - isLoaded:', isLoaded, 'filters:', filters, 'page:', currentPage);
     if (isLoaded) {
-      console.log('[DEBUG] Calling fetchRestaurants');
       fetchRestaurants();
     } else {
-      console.log('[DEBUG] Waiting for filters to load from localStorage');
       // Fallback: if isLoaded doesn't become true within 2 seconds, fetch anyway
       const timeout = setTimeout(() => {
-        console.log('[DEBUG] Timeout: isLoaded still false, fetching anyway');
         if (!isLoaded) {
           fetchRestaurants();
         }
@@ -140,8 +120,6 @@ export default function Home() {
 
     const resolveTargetPage = async () => {
       try {
-        console.log('[DEBUG] Resolving target page for restaurantId:', restaurantId);
-
         const params = new URLSearchParams();
         if (filters.search) params.append('search', filters.search);
         if (filters.suburb) params.append('suburb', filters.suburb);
@@ -172,7 +150,6 @@ export default function Home() {
         params.append('page', '1');
 
         const url = `/api/restaurants?${params.toString()}`;
-        console.log('[DEBUG] Resolving page: fetching full list from:', url);
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -182,22 +159,21 @@ export default function Home() {
         const fullList: Restaurant[] = Array.isArray(data?.restaurants) ? data.restaurants : Array.isArray(data) ? data : [];
 
         const idx = fullList.findIndex(r => String(r.id) === String(restaurantId));
-        console.log('[DEBUG] Resolving page: restaurant index in filtered list:', idx, 'total:', fullList.length);
 
         if (idx < 0) {
-          console.log('[DEBUG] Resolving page: restaurant not found in current filtered results (may be inactive or filtered out)');
           return;
         }
 
         const limitPerPage = 50;
         const targetPage = Math.floor(idx / limitPerPage) + 1;
-        console.log('[DEBUG] Resolving page: targetPage computed as', targetPage, '(currentPage:', currentPage, ')');
 
         if (targetPage !== currentPage) {
           setCurrentPage(targetPage);
         }
       } catch (e) {
-        console.error('[DEBUG] Failed to resolve restaurant page:', e);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to resolve restaurant page:', e);
+        }
       }
     };
 
@@ -211,12 +187,10 @@ export default function Home() {
       const urlParams = new URLSearchParams(window.location.search);
       const restaurantId = urlParams.get('restaurantId');
       if (restaurantId) {
-        console.log('[DEBUG] Found restaurantId in URL:', restaurantId);
         // Wait a bit for DOM to render
         setTimeout(() => {
           const element = document.getElementById(`restaurant-${restaurantId}`);
           if (element) {
-            console.log('[DEBUG] Scrolling to restaurant element');
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             // Add highlight effect
             element.classList.add('ring-4', 'ring-blue-500', 'ring-offset-2', 'transition-all', 'duration-300');
@@ -225,15 +199,11 @@ export default function Home() {
             }, 3000);
             // Clean up URL
             window.history.replaceState({}, '', '/');
-          } else {
-            console.log('[DEBUG] Restaurant element not found, restaurant may not be in current filter results');
           }
         }, 500);
       }
     }
   }, [loading, restaurants]);
-
-  console.log('[DEBUG] Rendering Home component - loading:', loading, 'restaurants:', restaurants.length, 'isLoaded:', isLoaded);
 
   // Generate structured data for SEO (memoized to prevent re-renders)
   const structuredData = useMemo(() => {
@@ -264,10 +234,6 @@ export default function Home() {
     <>
       <StructuredData data={structuredData} />
       <div className="container mx-auto px-4 py-8 relative z-10">
-        {/* Debug indicator - should always be visible */}
-        <div style={{ position: 'fixed', top: '10px', right: '10px', background: 'red', color: 'white', padding: '10px', zIndex: 9999, fontSize: '12px' }}>
-          DEBUG: React is rendering | Loading: {loading ? 'YES' : 'NO'} | Restaurants: {restaurants.length} | isLoaded: {isLoaded ? 'YES' : 'NO'}
-        </div>
         {/* Hero Section */}
         <header className="text-center mb-8 animate-fadeIn">
           <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent animate-gradient">

@@ -120,8 +120,6 @@ function formatDealDescription(description: string): string {
 }
 
 export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
-  console.log('[DEBUG] RestaurantCard rendering for:', restaurant.name, 'ID:', restaurant.id);
-  
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const [images, setImages] = useState<string[]>([]);
@@ -256,7 +254,7 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
         </div>
       )}
       {/* Image Slideshow */}
-      {images.length > 0 ? (
+      {images.length > 0 && currentImageIndex < images.length && images[currentImageIndex] ? (
         <div className="relative h-48 w-full group overflow-hidden">
           {imageLoading && (
             <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 animate-pulse z-0" />
@@ -265,10 +263,12 @@ export default function RestaurantCard({ restaurant }: RestaurantCardProps) {
             src={images[currentImageIndex]}
             alt={restaurant.name}
             fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             className={`object-cover transition-transform duration-500 group-hover:scale-110 ${
               imageLoading ? 'opacity-0' : 'opacity-100'
             }`}
             unoptimized
+            loading="lazy"
             onError={() => {
               handleImageError(currentImageIndex);
               setImageLoading(false);

@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/src/lib/db';
 import { restaurants, incorrectImages } from '@/src/lib/schema';
-import { and, eq, or, like, sql, inArray } from 'drizzle-orm';
+import { and, eq, or, like, sql, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { isRestaurantOpen } from '@/src/lib/utils';
 import { filterEatClubLogos } from '@/src/lib/eatclub';
+
+// Cache incorrect images for 5 minutes (in production, use Redis)
+let incorrectImagesCache: Set<string> | null = null;
+let incorrectImagesCacheTime = 0;
+const INCORRECT_IMAGES_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export const revalidate = 60; // Revalidate API route every 60 seconds
 
 export async function GET(request: Request) {
   try {
@@ -51,11 +58,66 @@ export async function GET(request: Request) {
       );
     }
 
-    // Build query
+    // Add SQL-level filters for JSONB fields to reduce data transfer
+    // Filter by deals using SQL JSONB queries (much faster than in-memory filtering)
+    if (hasDeals) {
+      conditions.push(
+        or(
+          sql`${restaurants.happyHour} IS NOT NULL`,
+          sql`${restaurants.weeklySpecials} IS NOT NULL AND jsonb_typeof(${restaurants.weeklySpecials}) = 'array' AND jsonb_array_length(${restaurants.weeklySpecials}) > 0`,
+          sql`${restaurants.deals} IS NOT NULL AND jsonb_typeof(${restaurants.deals}) = 'array' AND jsonb_array_length(${restaurants.deals}) > 0`,
+          sql`${restaurants.eatClubUrl} IS NOT NULL AND ${restaurants.eatClubUrl} != ''`,
+          sql`${restaurants.firstTableUrl} IS NOT NULL AND ${restaurants.firstTableUrl} != ''`
+        )!
+      );
+    }
+
+    if (hasHappyHour) {
+      conditions.push(sql`${restaurants.happyHour} IS NOT NULL`);
+    }
+
+    if (hasWeeklySpecials) {
+      conditions.push(sql`${restaurants.weeklySpecials} IS NOT NULL AND jsonb_typeof(${restaurants.weeklySpecials}) = 'array' AND jsonb_array_length(${restaurants.weeklySpecials}) > 0`);
+    }
+
+    if (hasEatClub) {
+      conditions.push(sql`${restaurants.eatClubUrl} IS NOT NULL AND ${restaurants.eatClubUrl} != ''`);
+    }
+
+    if (hasFirstTable) {
+      conditions.push(sql`${restaurants.firstTableUrl} IS NOT NULL AND ${restaurants.firstTableUrl} != ''`);
+    }
+
+    if (hasTopPicks) {
+      conditions.push(eq(restaurants.curatorsTopPick, 'true'));
+    }
+
+    // Build query with all conditions
     let query = db.select().from(restaurants);
     
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as any;
+    }
+    
+    // Check if we need in-memory filtering (openNow, hasCurrentDeals, weeklySpecialDay)
+    const needsInMemoryFiltering = openNow || hasCurrentDeals || weeklySpecialDay;
+    
+    // Get total count BEFORE pagination for accurate pagination metadata
+    const countQuery = db.select({ count: sql<number>`count(*)` }).from(restaurants);
+    if (conditions.length > 0) {
+      (countQuery as any).where(and(...conditions));
+    }
+    const countResult = await countQuery;
+    const totalCountBeforePagination = Number(countResult[0]?.count || 0);
+    
+    // If we need in-memory filtering, load more data (up to 1000) to filter, then paginate
+    // Otherwise, paginate at SQL level for maximum performance
+    if (needsInMemoryFiltering) {
+      // Load a reasonable batch for filtering (max 1000 to avoid memory issues)
+      query = query.limit(1000);
+    } else {
+      // Apply pagination at SQL level for better performance
+      query = query.limit(limit).offset(offset);
     }
     
     let results = await query;
@@ -73,51 +135,9 @@ export async function GET(request: Request) {
       });
     }
 
-    // Filter by deals (any type) - default behavior for main page
-    if (hasDeals) {
-      results = results.filter(restaurant => {
-        const happyHour = restaurant.happyHour;
-        const weeklySpecials = restaurant.weeklySpecials;
-        const deals = restaurant.deals;
-        const hasEatClubUrl = restaurant.eatClubUrl !== null && restaurant.eatClubUrl !== undefined && restaurant.eatClubUrl !== '';
-        const hasFirstTableUrl = restaurant.firstTableUrl !== null && restaurant.firstTableUrl !== undefined && restaurant.firstTableUrl !== '';
-        
-        // Check if restaurant has any direct deals (happy hour, weekly specials, or deals)
-        const hasDirectDeals = (
-          (happyHour !== null && happyHour !== undefined) ||
-          (weeklySpecials !== null && weeklySpecials !== undefined && Array.isArray(weeklySpecials) && weeklySpecials.length > 0) ||
-          (deals !== null && deals !== undefined && Array.isArray(deals) && deals.length > 0)
-        );
-        
-        // Include restaurants with direct deals OR platform links (EatClub/FirstTable)
-        return hasDirectDeals || hasEatClubUrl || hasFirstTableUrl;
-      });
-    }
-
-    // Apply deal type filters with OR logic (restaurant matches if it has ANY of the selected deal types)
-    const dealFilters: Array<(restaurant: any) => boolean> = [];
-    
-    if (hasHappyHour) {
-      dealFilters.push((restaurant: any) => {
-        const happyHour = restaurant.happyHour;
-        return happyHour !== null && happyHour !== undefined;
-      });
-    }
-
-    if (hasWeeklySpecials) {
-      dealFilters.push((restaurant: any) => {
-        const weeklySpecials = restaurant.weeklySpecials;
-        return (
-          weeklySpecials !== null &&
-          weeklySpecials !== undefined &&
-          Array.isArray(weeklySpecials) &&
-          weeklySpecials.length > 0
-        );
-      });
-    }
-
+    // Filter by current deals (in-house only) - must check in memory to exclude EatClub/FirstTable
     if (hasCurrentDeals) {
-      dealFilters.push((restaurant: any) => {
+      results = results.filter(restaurant => {
         const deals = restaurant.deals;
         if (!deals || !Array.isArray(deals) || deals.length === 0) {
           return false;
@@ -140,32 +160,6 @@ export async function GET(request: Request) {
         });
         
         return inHouseDeals.length > 0;
-      });
-    }
-
-    if (hasEatClub) {
-      dealFilters.push((restaurant: any) => {
-        return restaurant.eatClubUrl !== null && restaurant.eatClubUrl !== undefined && restaurant.eatClubUrl !== '';
-      });
-    }
-
-    if (hasFirstTable) {
-      dealFilters.push((restaurant: any) => {
-        return restaurant.firstTableUrl !== null && restaurant.firstTableUrl !== undefined && restaurant.firstTableUrl !== '';
-      });
-    }
-
-    if (hasTopPicks) {
-      dealFilters.push((restaurant: any) => {
-        return restaurant.curatorsTopPick === 'true' || restaurant.curatorsTopPick === true;
-      });
-    }
-
-    // Apply OR logic: restaurant matches if it satisfies ANY of the selected deal filters
-    if (dealFilters.length > 0) {
-      results = results.filter(restaurant => {
-        // Return true if restaurant matches ANY of the deal filters (OR logic)
-        return dealFilters.some(filter => filter(restaurant));
       });
     }
 
@@ -200,11 +194,15 @@ export async function GET(request: Request) {
       }
     }
 
-    // Filter out incorrect images from results
-    const incorrectImageUrls = await db.select({ imageUrl: incorrectImages.imageUrl })
-      .from(incorrectImages);
-    
-    const incorrectUrlsSet = new Set(incorrectImageUrls.map(img => img.imageUrl));
+    // Cache incorrect images to avoid repeated DB queries
+    const now = Date.now();
+    if (!incorrectImagesCache || now - incorrectImagesCacheTime > INCORRECT_IMAGES_CACHE_TTL) {
+      const incorrectImageUrls = await db.select({ imageUrl: incorrectImages.imageUrl })
+        .from(incorrectImages);
+      incorrectImagesCache = new Set(incorrectImageUrls.map(img => img.imageUrl));
+      incorrectImagesCacheTime = now;
+    }
+    const incorrectUrlsSet = incorrectImagesCache;
     
     results = results.map(restaurant => {
       const imageUrls = (restaurant.imageUrls as string[] | null) || [];
@@ -232,33 +230,25 @@ export async function GET(request: Request) {
       return aHasImages ? -1 : 1;
     });
 
-    // Calculate total count before pagination
-    const totalCount = results.length;
+    // Apply in-memory pagination if we did in-memory filtering
+    let paginatedResults = results;
+    let totalCount = totalCountBeforePagination;
     
-    // Debug logging
-    console.log('[API DEBUG] Total restaurants after filtering:', totalCount);
-    console.log('[API DEBUG] Pagination - page:', page, 'limit:', limit, 'offset:', offset);
-    console.log('[API DEBUG] Filters applied:', {
-      hasDeals,
-      hasHappyHour,
-      hasWeeklySpecials,
-      weeklySpecialDay,
-      hasCurrentDeals,
-      hasEatClub,
-      hasFirstTable,
-      hasTopPicks,
-      suburb,
-      cuisine,
-      openNow,
-      search,
-    });
+    if (needsInMemoryFiltering) {
+      // After in-memory filters, apply pagination
+      totalCount = results.length;
+      paginatedResults = results.slice(offset, offset + limit);
+    }
     
-    // Apply pagination
-    const paginatedResults = results.slice(offset, offset + limit);
+    // Debug logging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[API DEBUG] Total restaurants after SQL filtering:', totalCountBeforePagination);
+      if (needsInMemoryFiltering) {
+        console.log('[API DEBUG] After in-memory filters:', totalCount, 'paginated to', paginatedResults.length);
+      }
+    }
     
-    console.log('[API DEBUG] Returning', paginatedResults.length, 'restaurants for page', page);
-    
-    // Return paginated results with metadata
+    // Return paginated results with metadata and caching headers
     return NextResponse.json({
       restaurants: paginatedResults,
       pagination: {
@@ -268,6 +258,10 @@ export async function GET(request: Request) {
         totalPages: Math.ceil(totalCount / limit),
         hasNextPage: offset + limit < totalCount,
         hasPreviousPage: page > 1,
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       },
     });
   } catch (error) {
