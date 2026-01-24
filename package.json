@@ -10,8 +10,6 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "test:db": "tsx -r dotenv/config scripts/test-db-connection.ts dotenv_config_path=.env.local",
-    "test:api": "tsx scripts/test-api-response.ts",
     "check:main-page": "tsx -r dotenv/config scripts/check-main-page-restaurants.ts dotenv_config_path=.env.local",
     "sync:eatclub": "tsx -r dotenv/config scripts/sync-eatclub.ts dotenv_config_path=.env.local",
     "find:eatclub": "tsx -r dotenv/config scripts/find-new-eatclub-restaurants.ts dotenv_config_path=.env.local",
@@ -27,9 +25,7 @@
     "find:ta": "tsx -r dotenv/config scripts/find_TA_information.ts dotenv_config_path=.env.local",
     "apply:ta": "tsx -r dotenv/config scripts/apply-ta-information.ts dotenv_config_path=.env.local",
     "find:missing": "tsx -r dotenv/config scripts/find-missing-data.ts dotenv_config_path=.env.local",
-    "update:coordinates": "tsx -r dotenv/config scripts/update-found-coordinates.ts dotenv_config_path=.env.local",
-    "migrate:top-pick": "tsx -r dotenv/config scripts/add-curators-top-pick-column.ts dotenv_config_path=.env.local",
-    "migrate:contact": "tsx -r dotenv/config scripts/create-contact-submissions-table.ts dotenv_config_path=.env.local"
+    "update:coordinates": "tsx -r dotenv/config scripts/update-found-coordinates.ts dotenv_config_path=.env.local"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

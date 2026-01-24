@@ -11,6 +11,7 @@ let incorrectImagesCacheTime = 0;
 const INCORRECT_IMAGES_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const revalidate = 60; // Revalidate API route every 60 seconds
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -103,21 +104,19 @@ export async function GET(request: Request) {
     const needsInMemoryFiltering = openNow || hasCurrentDeals || weeklySpecialDay;
     
     // Get total count BEFORE pagination for accurate pagination metadata
-    const countQuery = db.select({ count: sql<number>`count(*)` }).from(restaurants);
+    let countQuery: unknown = db.select({ count: sql<number>`count(*)` }).from(restaurants);
     if (conditions.length > 0) {
-      (countQuery as any).where(and(...conditions));
+      countQuery = (countQuery as { where: (c: unknown) => unknown }).where(and(...conditions));
     }
-    const countResult = await countQuery;
+    const countResult = await (countQuery as Promise<{ count: number }[]>);
     const totalCountBeforePagination = Number(countResult[0]?.count || 0);
     
     // If we need in-memory filtering, load more data (up to 1000) to filter, then paginate
     // Otherwise, paginate at SQL level for maximum performance
     if (needsInMemoryFiltering) {
-      // Load a reasonable batch for filtering (max 1000 to avoid memory issues)
-      query = query.limit(1000);
+      query = (query as any).limit(1000);
     } else {
-      // Apply pagination at SQL level for better performance
-      query = query.limit(limit).offset(offset);
+      query = (query as any).limit(limit).offset(offset);
     }
     
     let results = await query;

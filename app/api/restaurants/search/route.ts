@@ -3,6 +3,8 @@ import { db } from '@/src/lib/db';
 import { restaurants } from '@/src/lib/schema';
 import { and, eq, or, like, sql } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 // API endpoint for autocomplete - returns ALL restaurants (not filtered by deals)
 export async function GET(request: Request) {
   try {

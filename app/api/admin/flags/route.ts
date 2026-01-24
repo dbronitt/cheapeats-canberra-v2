@@ -3,6 +3,8 @@ import { db } from '@/src/lib/db';
 import { restaurantFlags } from '@/src/lib/schema';
 import { eq, desc, and } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     console.log('[DEBUG] GET /api/admin/flags: Fetching flags');

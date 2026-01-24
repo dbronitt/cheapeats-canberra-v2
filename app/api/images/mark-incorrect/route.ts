@@ -3,6 +3,8 @@ import { db } from '@/src/lib/db';
 import { incorrectImages, restaurants } from '@/src/lib/schema';
 import { eq } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const { imageUrl, restaurantId, restaurantName, reason } = await request.json();

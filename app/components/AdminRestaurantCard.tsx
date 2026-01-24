@@ -981,7 +981,6 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                                   dealType: 'Happy Hour',
                                   days: updated[index].days || [],
                                   hours: updated[index].hours || '',
-                                  day: undefined,
                                   title: undefined,
                                   validUntil: undefined,
                                   source: undefined,

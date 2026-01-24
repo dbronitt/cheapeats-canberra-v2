@@ -3,6 +3,8 @@ import { db } from '@/src/lib/db';
 import { restaurantAuditLog } from '@/src/lib/schema';
 import { desc, eq } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/admin/audit-log
  * Get recent changes to restaurants

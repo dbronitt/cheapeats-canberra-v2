@@ -3,6 +3,8 @@ import { db } from '@/src/lib/db';
 import { restaurantSubmissions } from '@/src/lib/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 
+export const dynamic = 'force-dynamic';
+
 // GET all submissions
 export async function GET(request: Request) {
   try {
