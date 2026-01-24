@@ -15,8 +15,7 @@ interface UnifiedDeal {
   dealType: 'Happy Hour' | 'Weekly Deal' | 'Current Deal';
   title?: string;
   description: string;
-  days?: string[]; // For Happy Hour
-  day?: string; // For Weekly Deal
+  days?: string[]; // For Happy Hour and Weekly Deal
   hours?: string; // For Happy Hour
   validUntil?: string | null; // For Current Deal
   source?: string | null; // For Current Deal
@@ -115,7 +114,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
           id: `ws-${Date.now()}-${index}`,
           dealType: 'Weekly Deal',
           description: special.description || '',
-          day: special.day || '',
+          days: special.day ? [special.day] : [],
         });
       }
     });
@@ -209,14 +208,26 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
       });
     }
     
-    // Add Weekly Specials
+    // Add Weekly Specials (group by description, combine days)
     if (restaurant.weeklySpecials && Array.isArray(restaurant.weeklySpecials)) {
-      restaurant.weeklySpecials.forEach((special: any, index: number) => {
+      const weeklyMap = new Map<string, string[]>();
+      restaurant.weeklySpecials.forEach((special: any) => {
+        const desc = special.description || '';
+        const day = special.day || '';
+        if (desc && day) {
+          if (!weeklyMap.has(desc)) {
+            weeklyMap.set(desc, []);
+          }
+          weeklyMap.get(desc)!.push(day);
+        }
+      });
+      let wsIndex = 0;
+      weeklyMap.forEach((days, description) => {
         displayDeals.push({
-          id: `ws-display-${index}`,
+          id: `ws-display-${wsIndex++}`,
           dealType: 'Weekly Deal',
-          description: special.description || '',
-          day: special.day || '',
+          description: description,
+          days: days,
         });
       });
     }
@@ -266,13 +277,22 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
       }
       
       // Convert Weekly Deals back to weeklySpecials array
+      // Each selected day becomes a separate weekly special entry
       if (weeklyDeals.length > 0) {
-        validatedData.weeklySpecials = weeklyDeals
-          .filter(d => d.day?.trim() || d.description.trim())
-          .map(d => ({
-            day: d.day || '',
-            description: d.description.trim(),
-          }));
+        const weeklySpecialsArray: Array<{ day: string; description: string }> = [];
+        weeklyDeals.forEach((deal) => {
+          const days = deal.days || [];
+          const description = deal.description.trim();
+          if (days.length > 0 && description) {
+            days.forEach(day => {
+              weeklySpecialsArray.push({
+                day: day.trim(),
+                description: description,
+              });
+            });
+          }
+        });
+        validatedData.weeklySpecials = weeklySpecialsArray.length > 0 ? weeklySpecialsArray : null;
       } else {
         validatedData.weeklySpecials = null;
       }
@@ -648,7 +668,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                       id: `deal-${Date.now()}-${Math.random()}`,
                       dealType: 'Weekly Deal',
                       description: '',
-                      day: '',
+                      days: [],
                     };
                     setUnifiedDeals([...unifiedDeals, newDeal]);
                   }}
@@ -845,15 +865,26 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                               });
                             }
                             
-                            // Copy Weekly Specials
+                            // Copy Weekly Specials (group by description, combine days)
                             const sourceWeeklySpecials = sourceRestaurant.weeklySpecials as Array<{ day: string; description: string }> | null;
                             if (sourceWeeklySpecials && sourceWeeklySpecials.length > 0) {
+                              const weeklyMap = new Map<string, string[]>();
                               sourceWeeklySpecials.forEach((special) => {
+                                const desc = special.description || '';
+                                const day = special.day || '';
+                                if (desc && day) {
+                                  if (!weeklyMap.has(desc)) {
+                                    weeklyMap.set(desc, []);
+                                  }
+                                  weeklyMap.get(desc)!.push(day);
+                                }
+                              });
+                              weeklyMap.forEach((days, description) => {
                                 dealsToAdd.push({
                                   id: `ws-copy-${Date.now()}-${Math.random()}`,
                                   dealType: 'Weekly Deal',
-                                  description: special.description || '',
-                                  day: special.day || '',
+                                  description: description,
+                                  days: days,
                                 });
                               });
                             }
@@ -874,12 +905,25 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                             }
                             
                             // Filter out duplicates before merging
-                            const existingTitles = new Set(unifiedDeals.map(d => 
-                              `${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`
-                            ));
+                            const existingKeys = new Set(unifiedDeals.map(d => {
+                              if (d.dealType === 'Happy Hour') {
+                                return `hh-${(d.description || '').toLowerCase()}-${(d.days || []).sort().join(',')}`;
+                              } else if (d.dealType === 'Weekly Deal') {
+                                return `ws-${(d.description || '').toLowerCase()}-${(d.days || []).sort().join(',')}`;
+                              } else {
+                                return `deal-${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`;
+                              }
+                            }));
                             const uniqueDealsToAdd = dealsToAdd.filter(d => {
-                              const key = `${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`;
-                              return !existingTitles.has(key);
+                              let key: string;
+                              if (d.dealType === 'Happy Hour') {
+                                key = `hh-${(d.description || '').toLowerCase()}-${(d.days || []).sort().join(',')}`;
+                              } else if (d.dealType === 'Weekly Deal') {
+                                key = `ws-${(d.description || '').toLowerCase()}-${(d.days || []).sort().join(',')}`;
+                              } else {
+                                key = `deal-${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`;
+                              }
+                              return !existingKeys.has(key);
                             });
                             
                             // Merge with existing deals
@@ -913,7 +957,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b w-32">Deal Type</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Title</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Description</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Days/Hours/Day</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Days / Hours</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Valid Until</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-900 border-b">Source</th>
                       <th className="px-3 py-2 text-center text-xs font-medium text-gray-900 border-b w-20">Actions</th>
@@ -946,8 +990,7 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                                 updated[index] = {
                                   ...updated[index],
                                   dealType: 'Weekly Deal',
-                                  day: updated[index].day || '',
-                                  days: undefined,
+                                  days: updated[index].days || [],
                                   hours: undefined,
                                   title: undefined,
                                   validUntil: undefined,
@@ -962,7 +1005,6 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                                   source: updated[index].source || null,
                                   days: undefined,
                                   hours: undefined,
-                                  day: undefined,
                                 };
                               }
                               
@@ -1009,7 +1051,23 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                           {deal.dealType === 'Happy Hour' ? (
                             <div className="space-y-2">
                               <div>
-                                <label className="block text-xs text-gray-600 mb-1">Days:</label>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-xs text-gray-600">Days:</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...unifiedDeals];
+                                      const allSelected = DAYS_OF_WEEK.every(day => 
+                                        (updated[index].days || []).includes(day)
+                                      );
+                                      updated[index].days = allSelected ? [] : [...DAYS_OF_WEEK];
+                                      setUnifiedDeals(updated);
+                                    }}
+                                    className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                  >
+                                    {DAYS_OF_WEEK.every(day => (deal.days || []).includes(day)) ? 'Deselect All' : 'All Days'}
+                                  </button>
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                   {DAYS_OF_WEEK.map(day => (
                                     <label key={day} className="flex items-center">
@@ -1042,24 +1100,53 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                                   setUnifiedDeals(updated);
                                 }}
                                 className="w-full px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                placeholder="Hours (e.g., 4-6pm)"
+                                placeholder="Hours (e.g., 4:00 PM - 6:00 PM)"
                               />
                             </div>
                           ) : deal.dealType === 'Weekly Deal' ? (
-                            <select
-                              value={deal.day || ''}
-                              onChange={(e) => {
-                                const updated = [...unifiedDeals];
-                                updated[index].day = e.target.value;
-                                setUnifiedDeals(updated);
-                              }}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-                              <option value="">Select day...</option>
-                              {DAYS_OF_WEEK.map(day => (
-                                <option key={day} value={day}>{day}</option>
-                              ))}
-                            </select>
+                            <div className="space-y-2">
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-xs text-gray-600">Days:</label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...unifiedDeals];
+                                      const allSelected = DAYS_OF_WEEK.every(day => 
+                                        (updated[index].days || []).includes(day)
+                                      );
+                                      updated[index].days = allSelected ? [] : [...DAYS_OF_WEEK];
+                                      setUnifiedDeals(updated);
+                                    }}
+                                    className="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded hover:bg-teal-200"
+                                  >
+                                    {DAYS_OF_WEEK.every(day => (deal.days || []).includes(day)) ? 'Deselect All' : 'All Days'}
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {DAYS_OF_WEEK.map(day => (
+                                    <label key={day} className="flex items-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={deal.days?.includes(day) || false}
+                                        onChange={(e) => {
+                                          const updated = [...unifiedDeals];
+                                          if (!updated[index].days) updated[index].days = [];
+                                          if (e.target.checked) {
+                                            updated[index].days = [...(updated[index].days || []), day];
+                                          } else {
+                                            updated[index].days = (updated[index].days || []).filter(d => d !== day);
+                                          }
+                                          setUnifiedDeals(updated);
+                                        }}
+                                        className="w-3 h-3 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                                      />
+                                      <span className="ml-1 text-xs text-gray-700">{day.substring(0, 3)}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           ) : (
                             <span className="text-xs text-gray-400">-</span>
                           )}
