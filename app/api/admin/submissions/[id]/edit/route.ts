@@ -125,13 +125,20 @@ export async function POST(
               }];
               updates.weeklySpecials = weeklySpecials;
             } else if (deal.dealType === 'deal') {
-              const deals = [...existingDeals, {
+              const newDeal = {
                 title: deal.title,
                 description: deal.description,
                 validUntil: deal.validUntil || null,
                 source: 'submission',
-              }];
-              updates.deals = deals;
+              };
+              // Check for duplicates before adding
+              const isDuplicate = existingDeals.some((d: any) => 
+                (d.title || '').toLowerCase() === (deal.title || '').toLowerCase() &&
+                (d.description || '').toLowerCase() === (deal.description || '').toLowerCase()
+              );
+              if (!isDuplicate) {
+                updates.deals = [...existingDeals, newDeal];
+              }
             }
           }
 

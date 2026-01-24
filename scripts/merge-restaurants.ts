@@ -139,12 +139,15 @@ async function mergeRestaurants(primaryName: string, duplicateName: string) {
   // Merge deals (combine arrays, remove duplicates by title)
   const primaryDeals = Array.isArray(primary.deals) ? primary.deals : [];
   const duplicateDeals = Array.isArray(duplicate.deals) ? duplicate.deals : [];
-  const dealsMap = new Map();
+  const dealsMap = new Map<string, any>();
   
   [...primaryDeals, ...duplicateDeals].forEach((deal: any) => {
-    const title = deal.title?.toLowerCase();
-    if (title && !dealsMap.has(title)) {
-      dealsMap.set(title, deal);
+    const title = (deal.title || '').toLowerCase().trim();
+    const desc = (deal.description || '').toLowerCase().trim();
+    const key = `${title}-${desc}`;
+    // Use title+description as key for better duplicate detection
+    if (key !== '-' && !dealsMap.has(key)) {
+      dealsMap.set(key, deal);
     }
   });
   

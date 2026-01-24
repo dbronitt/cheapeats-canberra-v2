@@ -43,6 +43,62 @@ export async function isImageIncorrect(imageUrl: string): Promise<boolean> {
   }
 }
 
+/**
+ * Check if a deal already exists in the deals array.
+ * Compares by title (case-insensitive) and description similarity.
+ */
+export function isDealDuplicate(
+  newDeal: { title?: string; description?: string; source?: string },
+  existingDeals: Array<{ title?: string; description?: string; source?: string }>
+): boolean {
+  if (!existingDeals || existingDeals.length === 0) return false;
+  
+  const newTitle = (newDeal.title || '').toLowerCase().trim();
+  const newDesc = (newDeal.description || '').toLowerCase().trim();
+  
+  for (const existing of existingDeals) {
+    const existingTitle = (existing.title || '').toLowerCase().trim();
+    const existingDesc = (existing.description || '').toLowerCase().trim();
+    
+    // Exact title match
+    if (newTitle && existingTitle && newTitle === existingTitle) {
+      // If descriptions are similar (one contains the other or they're very similar)
+      if (!newDesc || !existingDesc) return true; // Same title, no description = duplicate
+      if (newDesc === existingDesc) return true;
+      if (newDesc.includes(existingDesc) || existingDesc.includes(newDesc)) return true;
+      // If descriptions are very similar (80%+ overlap)
+      const longer = newDesc.length > existingDesc.length ? newDesc : existingDesc;
+      const shorter = newDesc.length > existingDesc.length ? existingDesc : newDesc;
+      if (shorter.length > 0 && longer.includes(shorter.substring(0, Math.min(50, shorter.length)))) {
+        return true;
+      }
+    }
+    
+    // Same source (e.g., "EatClub") with same title pattern
+    if (newDeal.source && existing.source && 
+        newDeal.source.toLowerCase() === existing.source.toLowerCase() &&
+        newTitle && existingTitle && newTitle === existingTitle) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Add a deal to an array, avoiding duplicates.
+ */
+export function addDealWithoutDuplicates(
+  existingDeals: Array<any> | null,
+  newDeal: { title?: string; description?: string; source?: string; validUntil?: string | null }
+): Array<any> {
+  const deals = existingDeals || [];
+  if (!isDealDuplicate(newDeal, deals)) {
+    return [...deals, newDeal];
+  }
+  return deals;
+}
+
 export function isRestaurantOpen(openingHours: Record<string, string> | null): boolean {
   if (!openingHours || typeof openingHours !== 'object') return false;
 

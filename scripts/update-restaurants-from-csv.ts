@@ -290,10 +290,21 @@ async function updateRestaurantFromCsv(
     if (dealTitle || dealDescription) {
       const existingDeals = (restaurant.deals as Array<any> | null) || [];
       
-      // Check if deal already exists
-      const dealExists = existingDeals.some(d => 
-        d.title === dealTitle && d.description?.includes(dealDescription.substring(0, 50))
-      );
+      // Check if deal already exists (improved duplicate detection)
+      const dealTitleLower = (dealTitle || '').toLowerCase().trim();
+      const dealDescLower = (dealDescription || '').toLowerCase().trim();
+      const dealExists = existingDeals.some((d: any) => {
+        const dTitle = (d.title || '').toLowerCase().trim();
+        const dDesc = (d.description || '').toLowerCase().trim();
+        // Exact title match
+        if (dealTitleLower && dTitle === dealTitleLower) {
+          // If descriptions match or one contains the other
+          if (!dealDescLower || !dDesc) return true;
+          if (dDesc === dealDescLower) return true;
+          if (dDesc.includes(dealDescLower) || dealDescLower.includes(dDesc)) return true;
+        }
+        return false;
+      });
       
       if (!dealExists) {
         const newDeal: any = {

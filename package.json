@@ -22,6 +22,7 @@
     "update:csv:create": "tsx -r dotenv/config scripts/update-restaurants-from-csv.ts --create dotenv_config_path=.env.local",
     "backup:db": "tsx -r dotenv/config scripts/backup-database.ts dotenv_config_path=.env.local",
     "fix:deals": "tsx -r dotenv/config scripts/fix-malformed-deals.ts dotenv_config_path=.env.local",
+    "fix:duplicate-deals": "tsx -r dotenv/config scripts/fix-duplicate-deals.ts dotenv_config_path=.env.local",
     "move:single-day-deals": "tsx -r dotenv/config scripts/move-single-day-deals-to-weekly.ts dotenv_config_path=.env.local",
     "find:ta": "tsx -r dotenv/config scripts/find_TA_information.ts dotenv_config_path=.env.local",
     "apply:ta": "tsx -r dotenv/config scripts/apply-ta-information.ts dotenv_config_path=.env.local",

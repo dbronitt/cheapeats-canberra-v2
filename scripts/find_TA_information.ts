@@ -57,6 +57,88 @@ function hasUnknownHours(oh: unknown): boolean {
 }
 
 /**
+ * Normalize hours string to consistent format: "9:00 AM - 5:00 PM"
+ */
+function normalizeHoursFormat(hours: string): string {
+  if (/^closed$/i.test(hours.trim())) return 'CLOSED';
+  
+  // Split multiple ranges (e.g., "11:30 AM–2:30 PM & 5–9 PM")
+  const ranges = hours.split(/\s*[,&]\s*/).map(r => r.trim()).filter(Boolean);
+  const normalizedRanges: string[] = [];
+  
+  for (const range of ranges) {
+    // Match time patterns: "11 – 12 AM", "9 AM–5 PM", "11:30 AM–9 PM", "11–12 AM", etc.
+    // Pattern: start (with optional :MM and AM/PM) - end (with optional :MM and AM/PM)
+    const timePattern = /(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*[–\-—]\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i;
+    const match = range.match(timePattern);
+    
+    if (match) {
+      let [, startH, startM = '00', startPeriod, endH, endM = '00', endPeriod] = match;
+      
+      // Normalize hours (1-12)
+      let startHour = parseInt(startH, 10);
+      let endHour = parseInt(endH, 10);
+      
+      // If no period specified for start, infer from context
+      if (!startPeriod && endPeriod) {
+        const endP = endPeriod.toUpperCase();
+        // If end is AM and start > end, start is likely PM (e.g., "11 – 12 AM" → "11 PM - 12 AM")
+        // But if start is 12, it's likely "12 AM" (midnight)
+        if (endP === 'AM' && startHour > endHour && startHour !== 12) {
+          startPeriod = 'PM';
+        } else if (endP === 'PM' && startHour === 12) {
+          startPeriod = 'AM'; // "12 – 5 PM" → "12 PM - 5 PM" (noon to 5 PM)
+        } else {
+          startPeriod = endP;
+        }
+      }
+      if (!startPeriod) {
+        // Default: assume AM for morning hours (1-11), PM for afternoon (12+)
+        startPeriod = startHour >= 12 ? 'PM' : 'AM';
+      }
+      
+      // If no period for end, infer from start
+      if (!endPeriod) {
+        const startP = startPeriod.toUpperCase();
+        // If end < start, likely crossed noon/midnight
+        if (endHour < startHour || (endHour === startHour && parseInt(endM) < parseInt(startM))) {
+          // If start is AM, end crossing means PM (e.g., "11 AM - 1 PM")
+          // If start is PM, end crossing means AM next day (e.g., "11 PM - 1 AM")
+          endPeriod = startP === 'AM' ? 'PM' : 'AM';
+        } else {
+          endPeriod = startP;
+        }
+      }
+      
+      // Special case: "11 – 12 AM" likely means "11 AM - 12 PM" (noon)
+      if (startPeriod.toUpperCase() === 'AM' && endPeriod.toUpperCase() === 'AM' && 
+          startHour >= 11 && endHour === 12) {
+        endPeriod = 'PM';
+      }
+      
+      // Ensure 12-hour format
+      if (startHour > 12) startHour = startHour % 12 || 12;
+      if (endHour > 12) endHour = endHour % 12 || 12;
+      
+      // Format with leading zeros for hours < 10, ensure minutes are 2 digits
+      const startStr = `${startHour}:${startM.padStart(2, '0')} ${startPeriod.toUpperCase()}`;
+      const endStr = `${endHour}:${endM.padStart(2, '0')} ${endPeriod.toUpperCase()}`;
+      
+      normalizedRanges.push(`${startStr} - ${endStr}`);
+    } else {
+      // If pattern doesn't match, try to preserve as-is but clean up
+      const cleaned = range
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (cleaned) normalizedRanges.push(cleaned);
+    }
+  }
+  
+  return normalizedRanges.length > 0 ? normalizedRanges.join(', ') : hours;
+}
+
+/**
  * Parse TripAdvisor-style hours.
  * Handles DDG panel format: "Sat 11–12 AM Sun 11–12 AMMon..." (concatenated, no newlines).
  */
@@ -94,12 +176,11 @@ function parseTripAdvisorHours(text: string): Record<string, string> | null {
     }
     hours = hours
       .replace(/\s+(What people say|More on Tripadvisor|Open Map|Popular hours|Was this helpful\?|Only include results|More at Apple Maps).*$/i, '')
-      .replace(/[\u2013\u2014-]+/g, ' – ')
       .replace(/\s*&\s*/g, ', ')
       .replace(/\s+/g, ' ')
       .trim();
     if (!hours) continue;
-    result[key] = hours;
+    result[key] = normalizeHoursFormat(hours);
   }
 
   return Object.keys(result).length === 0 ? null : result;

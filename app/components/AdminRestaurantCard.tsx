@@ -277,16 +277,30 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
         validatedData.weeklySpecials = null;
       }
       
-      // Convert Current Deals back to deals array
+      // Convert Current Deals back to deals array (with deduplication)
       if (currentDeals.length > 0) {
-        validatedData.deals = currentDeals
-          .filter(d => (d.title?.trim() || d.description.trim()))
-          .map(d => ({
-            title: d.title || '',
-            description: d.description.trim(),
-            validUntil: d.validUntil || null,
-            source: d.source || null,
-          }));
+        const seen = new Set<string>();
+        const uniqueDeals: any[] = [];
+        
+        for (const d of currentDeals) {
+          if (!d.title?.trim() && !d.description.trim()) continue;
+          
+          const title = (d.title || '').toLowerCase().trim();
+          const desc = (d.description || '').toLowerCase().trim();
+          const key = `${title}-${desc}`;
+          
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueDeals.push({
+              title: d.title || '',
+              description: d.description.trim(),
+              validUntil: d.validUntil || null,
+              source: d.source || null,
+            });
+          }
+        }
+        
+        validatedData.deals = uniqueDeals.length > 0 ? uniqueDeals : null;
       } else {
         validatedData.deals = null;
       }
@@ -859,11 +873,25 @@ export default function AdminRestaurantCard({ restaurant, onUpdate, initialEditM
                               });
                             }
                             
+                            // Filter out duplicates before merging
+                            const existingTitles = new Set(unifiedDeals.map(d => 
+                              `${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`
+                            ));
+                            const uniqueDealsToAdd = dealsToAdd.filter(d => {
+                              const key = `${(d.title || '').toLowerCase()}-${(d.description || '').toLowerCase()}`;
+                              return !existingTitles.has(key);
+                            });
+                            
                             // Merge with existing deals
-                            setUnifiedDeals([...unifiedDeals, ...dealsToAdd]);
+                            setUnifiedDeals([...unifiedDeals, ...uniqueDealsToAdd]);
                             setShowCopyDealsModal(false);
                             setSelectedSourceId(null);
-                            alert(`Copied ${dealsToAdd.length} deal(s) from ${sourceRestaurant.name}`);
+                            const skipped = dealsToAdd.length - uniqueDealsToAdd.length;
+                            if (skipped > 0) {
+                              alert(`Copied ${uniqueDealsToAdd.length} deal(s) from ${sourceRestaurant.name} (${skipped} duplicate(s) skipped)`);
+                            } else {
+                              alert(`Copied ${uniqueDealsToAdd.length} deal(s) from ${sourceRestaurant.name}`);
+                            }
                           }}
                           disabled={!selectedSourceId}
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
