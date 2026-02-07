@@ -16,9 +16,11 @@ interface ChangeLog {
 
 interface RecentChangesProps {
   onRevert?: () => void;
+  /** When this value changes, trigger a refresh of the changes list */
+  refreshTrigger?: number;
 }
 
-export default function RecentChanges({ onRevert }: RecentChangesProps) {
+export default function RecentChanges({ onRevert, refreshTrigger }: RecentChangesProps) {
   const [logs, setLogs] = useState<ChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [revertingId, setRevertingId] = useState<number | null>(null);
@@ -30,6 +32,12 @@ export default function RecentChanges({ onRevert }: RecentChangesProps) {
   useEffect(() => {
     fetchChanges();
   }, []);
+
+  useEffect(() => {
+    if (refreshTrigger != null && refreshTrigger > 0) {
+      fetchChanges();
+    }
+  }, [refreshTrigger]);
 
   const fetchChanges = async () => {
     try {

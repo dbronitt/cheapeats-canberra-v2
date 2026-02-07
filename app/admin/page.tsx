@@ -47,6 +47,23 @@ export default function AdminPage() {
     searchImages: false,
   });
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [findProgress, setFindProgress] = useState<{
+    phase: string;
+    processed: number;
+    total: number;
+    currentVenue: string | null;
+    changes: Array<{ restaurantName: string; action: 'update' | 'new' }>;
+    stats: { matched: number; newRestaurants: number; updated: number; errors: number };
+  } | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{
+    phase: string;
+    processed: number;
+    total: number;
+    currentRestaurant: string | null;
+    changes: Array<{ restaurantName: string; action: 'update' | 'removed' }>;
+    stats: { updated: number; removed: number; errors: number };
+  } | null>(null);
+  const [changesRefreshTrigger, setChangesRefreshTrigger] = useState(0);
   const [updateResults, setUpdateResults] = useState<{
     type: 'find-eatclub' | 'sync-eatclub' | 'search-images' | null;
     success: boolean;
@@ -589,28 +606,123 @@ export default function AdminPage() {
                 success: false,
                 message: 'Searching EatClub for new restaurants in Canberra...',
               });
+              setFindProgress({
+                phase: 'Starting...',
+                processed: 0,
+                total: 0,
+                currentVenue: null,
+                changes: [],
+                stats: { matched: 0, newRestaurants: 0, updated: 0, errors: 0 },
+              });
               try {
-                const response = await fetch('/api/admin/update/find-eatclub', {
+                const response = await fetch('/api/admin/update/find-eatclub?stream=true', {
                   method: 'POST',
                 });
-                const data = await response.json();
-                if (response.ok) {
+                if (!response.ok || !response.body) {
+                  const errData = await response.json().catch(() => ({}));
+                  throw new Error(errData.error || `HTTP ${response.status}`);
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalStats: any = null;
+                let finalData: any = null;
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+
+                  for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                      const event = JSON.parse(line) as {
+                        type: string;
+                        message?: string;
+                        processed?: number;
+                        total?: number;
+                        currentVenue?: string;
+                        stats?: any;
+                        change?: { restaurantId: number; restaurantName: string; action: 'update' | 'new' };
+                        error?: string;
+                      };
+                      if (event.type === 'phase') {
+                        setFindProgress(p => p ? { ...p, phase: event.message || p.phase } : p);
+                      } else if (event.type === 'progress') {
+                        setFindProgress(p =>
+                          p
+                            ? {
+                                ...p,
+                                processed: event.processed ?? p.processed,
+                                total: event.total ?? p.total,
+                                currentVenue: event.currentVenue ?? null,
+                                stats: event.stats
+                                  ? {
+                                      matched: event.stats.matched ?? p.stats.matched,
+                                      newRestaurants: event.stats.newRestaurants ?? p.stats.newRestaurants,
+                                      updated: event.stats.restaurantsUpdated ?? p.stats.updated,
+                                      errors: event.stats.errors ?? p.stats.errors,
+                                    }
+                                  : p.stats,
+                              }
+                            : p
+                        );
+                      } else if (event.type === 'updated' || event.type === 'new') {
+                        setFindProgress(p => {
+                          if (!p || !event.change) return p;
+                          const change = {
+                            restaurantName: event.change.restaurantName,
+                            action: event.type === 'new' ? ('new' as const) : ('update' as const),
+                          };
+                          return {
+                            ...p,
+                            changes: [...p.changes, change],
+                            stats: event.stats
+                              ? {
+                                  matched: event.stats.matched ?? p.stats.matched,
+                                  newRestaurants: event.stats.newRestaurants ?? p.stats.newRestaurants,
+                                  updated: event.stats.restaurantsUpdated ?? p.stats.updated,
+                                  errors: event.stats.errors ?? p.stats.errors,
+                                }
+                              : p.stats,
+                          };
+                        });
+                      } else if (event.type === 'complete') {
+                        finalStats = event.stats;
+                        finalData = { stats: event.stats };
+                      } else if (event.type === 'error') {
+                        throw new Error(event.error || 'Find failed');
+                      }
+                    } catch (parseErr) {
+                      console.warn('[DEBUG] Failed to parse find-eatclub event:', line, parseErr);
+                    }
+                  }
+                }
+
+                if (finalStats) {
                   setUpdateResults({
                     type: 'find-eatclub',
                     success: true,
-                    message: data.message || 'Search complete',
-                    stats: data.stats,
-                    data: data,
+                    message: 'Search complete',
+                    stats: finalStats,
+                    data: finalData,
                   });
-                  // Refresh restaurants list
+                  setFindProgress(null);
+                  const totalChanges = finalStats.restaurantsUpdated ?? 0;
+                  if (totalChanges > 0) {
+                    setChangesRefreshTrigger(t => t + 1);
+                  }
                   fetchRestaurants();
                 } else {
                   setUpdateResults({
                     type: 'find-eatclub',
                     success: false,
-                    message: 'Failed to find restaurants',
-                    error: data.error || 'Unknown error',
+                    message: 'Find ended unexpectedly',
+                    error: 'The connection closed before the search completed. This can happen if the discovery phase takes too long. Try again, or run via command line: npm run find:eatclub',
                   });
+                  setFindProgress(null);
                 }
               } catch (error) {
                 setUpdateResults({
@@ -619,6 +731,7 @@ export default function AdminPage() {
                   message: 'Failed to find restaurants',
                   error: error instanceof Error ? error.message : 'Unknown error',
                 });
+                setFindProgress(null);
               } finally {
                 setUpdating(prev => ({ ...prev, findEatClub: false }));
               }
@@ -647,28 +760,107 @@ export default function AdminPage() {
                 success: false,
                 message: 'Syncing EatClub data for existing restaurants...',
               });
+              setSyncProgress({
+                phase: 'Starting...',
+                processed: 0,
+                total: 0,
+                currentRestaurant: null,
+                changes: [],
+                stats: { updated: 0, removed: 0, errors: 0 },
+              });
               try {
-                const response = await fetch('/api/admin/update/sync-eatclub', {
+                const response = await fetch('/api/admin/update/sync-eatclub?stream=true', {
                   method: 'POST',
                 });
-                const data = await response.json();
-                if (response.ok) {
+                if (!response.ok || !response.body) {
+                  const errData = await response.json().catch(() => ({}));
+                  throw new Error(errData.error || `HTTP ${response.status}`);
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalStats: any = null;
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+
+                  for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                      const event = JSON.parse(line) as {
+                        type: string;
+                        message?: string;
+                        processed?: number;
+                        total?: number;
+                        currentRestaurant?: string;
+                        stats?: any;
+                        change?: { restaurantId: number; restaurantName: string; action: 'update' | 'removed' };
+                        error?: string;
+                      };
+                      if (event.type === 'phase') {
+                        setSyncProgress(p => p ? { ...p, phase: event.message || p.phase } : p);
+                      } else if (event.type === 'progress') {
+                        setSyncProgress(p =>
+                          p
+                            ? {
+                                ...p,
+                                processed: event.processed ?? p.processed,
+                                total: event.total ?? p.total,
+                                currentRestaurant: event.currentRestaurant ?? null,
+                                stats: event.stats ? { updated: event.stats.updated, removed: event.stats.removed, errors: event.stats.errors } : p.stats,
+                              }
+                            : p
+                        );
+                      } else if (event.type === 'updated' || event.type === 'removed') {
+                        setSyncProgress(p => {
+                          if (!p || !event.change) return p;
+                          const change = {
+                            restaurantName: event.change.restaurantName,
+                            action: event.type === 'removed' ? ('removed' as const) : ('update' as const),
+                          };
+                          return {
+                            ...p,
+                            changes: [...p.changes, change],
+                            stats: event.stats ? { updated: event.stats.updated, removed: event.stats.removed, errors: event.stats.errors } : p.stats,
+                          };
+                        });
+                      } else if (event.type === 'complete') {
+                        finalStats = event.stats;
+                      } else if (event.type === 'error') {
+                        throw new Error(event.error || 'Sync failed');
+                      }
+                    } catch (parseErr) {
+                      console.warn('[DEBUG] Failed to parse sync event:', line, parseErr);
+                    }
+                  }
+                }
+
+                if (finalStats) {
                   setUpdateResults({
                     type: 'sync-eatclub',
                     success: true,
-                    message: data.message || 'Sync complete',
-                    stats: data.stats,
-                    data: data,
+                    message: 'EatClub sync complete',
+                    stats: finalStats,
+                    data: { stats: finalStats },
                   });
-                  // Refresh restaurants list
+                  setSyncProgress(null);
+                  const totalChanges = (finalStats.updated || 0) + (finalStats.removed || 0);
+                  if (totalChanges > 0) {
+                    setChangesRefreshTrigger(t => t + 1);
+                  }
                   fetchRestaurants();
                 } else {
                   setUpdateResults({
                     type: 'sync-eatclub',
                     success: false,
-                    message: 'Failed to sync EatClub',
-                    error: data.error || 'Unknown error',
+                    message: 'Sync ended unexpectedly',
+                    error: 'The connection closed before the sync completed. This can happen if the discovery phase takes too long (Puppeteer can take several minutes). Try again, or run the sync via the command line: npm run sync:eatclub',
                   });
+                  setSyncProgress(null);
                 }
               } catch (error) {
                 setUpdateResults({
@@ -677,6 +869,7 @@ export default function AdminPage() {
                   message: 'Failed to sync EatClub',
                   error: error instanceof Error ? error.message : 'Unknown error',
                 });
+                setSyncProgress(null);
               } finally {
                 setUpdating(prev => ({ ...prev, syncEatClub: false }));
               }
@@ -756,6 +949,79 @@ export default function AdminPage() {
           </button>
         </div>
         
+        {/* Live progress during Find EatClub */}
+        {findProgress && updating.findEatClub && (
+          <div className="mt-6 p-6 rounded-lg border-2 border-blue-300 bg-blue-50 shadow-lg">
+            <h3 className="text-lg font-bold text-blue-800 mb-3">🔍 Find in progress</h3>
+            <div className="space-y-2 text-sm text-gray-700">
+              <p><strong>Phase:</strong> {findProgress.phase}</p>
+              {findProgress.total > 0 && (
+                <p><strong>Progress:</strong> {findProgress.processed} / {findProgress.total}</p>
+              )}
+              {findProgress.currentVenue && (
+                <p><strong>Current:</strong> {findProgress.currentVenue}</p>
+              )}
+              <div className="flex gap-4 mt-2">
+                <span className="text-green-600">Matched: {findProgress.stats.matched}</span>
+                <span className="text-blue-600">New: {findProgress.stats.newRestaurants}</span>
+                <span className="text-purple-600">Updated: {findProgress.stats.updated}</span>
+                {findProgress.stats.errors > 0 && (
+                  <span className="text-red-600">Errors: {findProgress.stats.errors}</span>
+                )}
+              </div>
+              {findProgress.changes.length > 0 && (
+                <div className="mt-3">
+                  <p className="font-medium text-gray-800 mb-1">Changes (will appear in Recent Changes):</p>
+                  <ul className="max-h-32 overflow-y-auto bg-white rounded p-2 border border-blue-200 text-xs">
+                    {findProgress.changes.map((c, i) => (
+                      <li key={i} className="py-0.5">
+                        {c.action === 'new' ? '🆕' : '✅'} {c.restaurantName}
+                        {c.action === 'new' ? ' (new venue - not created)' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Live progress during Sync EatClub */}
+        {syncProgress && updating.syncEatClub && (
+          <div className="mt-6 p-6 rounded-lg border-2 border-purple-300 bg-purple-50 shadow-lg">
+            <h3 className="text-lg font-bold text-purple-800 mb-3">🔄 Sync in progress</h3>
+            <div className="space-y-2 text-sm text-gray-700">
+              <p><strong>Phase:</strong> {syncProgress.phase}</p>
+              {syncProgress.total > 0 && (
+                <p><strong>Progress:</strong> {syncProgress.processed} / {syncProgress.total}</p>
+              )}
+              {syncProgress.currentRestaurant && (
+                <p><strong>Current:</strong> {syncProgress.currentRestaurant}</p>
+              )}
+              <div className="flex gap-4 mt-2">
+                <span className="text-green-600">Updated: {syncProgress.stats.updated}</span>
+                <span className="text-orange-600">Removed: {syncProgress.stats.removed}</span>
+                {syncProgress.stats.errors > 0 && (
+                  <span className="text-red-600">Errors: {syncProgress.stats.errors}</span>
+                )}
+              </div>
+              {syncProgress.changes.length > 0 && (
+                <div className="mt-3">
+                  <p className="font-medium text-gray-800 mb-1">Changes recorded (will appear in Recent Changes):</p>
+                  <ul className="max-h-32 overflow-y-auto bg-white rounded p-2 border border-purple-200 text-xs">
+                    {syncProgress.changes.map((c, i) => (
+                      <li key={i} className="py-0.5">
+                        {c.action === 'removed' ? '❌' : '✅'} {c.restaurantName}
+                        {c.action === 'removed' ? ' (EatClub URL removed)' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Detailed Results Box */}
         {updateResults && (
           <div className={`mt-6 p-6 rounded-lg border-2 shadow-lg ${
@@ -805,9 +1071,9 @@ export default function AdminPage() {
                           <div className="text-2xl font-bold text-blue-600">{updateResults.stats.matched || 0}</div>
                           <div className="text-xs text-gray-600 mt-1">Matched Existing</div>
                         </div>
-                        {updateResults.data?.restaurantsUpdated !== undefined && (
+                        {updateResults.stats?.restaurantsUpdated !== undefined && (
                           <div className="bg-white p-3 rounded border border-purple-200">
-                            <div className="text-2xl font-bold text-purple-600">{updateResults.data.restaurantsUpdated}</div>
+                            <div className="text-2xl font-bold text-purple-600">{updateResults.stats.restaurantsUpdated}</div>
                             <div className="text-xs text-gray-600 mt-1">Restaurants Updated</div>
                           </div>
                         )}
@@ -815,6 +1081,19 @@ export default function AdminPage() {
                           <div className="bg-white p-3 rounded border border-red-200">
                             <div className="text-2xl font-bold text-red-600">{updateResults.stats.errors}</div>
                             <div className="text-xs text-gray-600 mt-1">Errors</div>
+                          </div>
+                        )}
+                        {(updateResults.stats.restaurantsUpdated ?? 0) > 0 && (
+                          <div className="col-span-full mt-4 p-4 bg-blue-50 rounded border border-blue-200">
+                            <p className="text-sm font-medium text-blue-900 mb-2">
+                              Changes have been recorded and can be reverted in Recent Changes.
+                            </p>
+                            <button
+                              onClick={() => setActiveTab('changes')}
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                            >
+                              View Recent Changes
+                            </button>
                           </div>
                         )}
                       </>
@@ -848,6 +1127,19 @@ export default function AdminPage() {
                           <div className="bg-white p-3 rounded border border-red-200">
                             <div className="text-2xl font-bold text-red-600">{updateResults.stats.errors}</div>
                             <div className="text-xs text-gray-600 mt-1">Errors</div>
+                          </div>
+                        )}
+                        {((updateResults.stats.updated || 0) + (updateResults.stats.removed || 0)) > 0 && (
+                          <div className="col-span-full mt-4 p-4 bg-blue-50 rounded border border-blue-200">
+                            <p className="text-sm font-medium text-blue-900 mb-2">
+                              Changes have been recorded and can be reverted in Recent Changes.
+                            </p>
+                            <button
+                              onClick={() => setActiveTab('changes')}
+                              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                            >
+                              View Recent Changes
+                            </button>
                           </div>
                         )}
                       </>
@@ -901,11 +1193,19 @@ export default function AdminPage() {
                 </div>
               )}
               
-              {/* Error Display */}
-              {!updateResults.success && updateResults.error && (
-                <div className="bg-red-100 p-3 rounded border border-red-300">
-                  <p className="text-red-800 text-sm font-medium">Error Details:</p>
-                  <p className="text-red-700 text-sm mt-1">{updateResults.error}</p>
+              {/* Error Display - always show prominently when failed */}
+              {!updateResults.success && (
+                <div className="bg-red-100 p-4 rounded border-2 border-red-300">
+                  <p className="text-red-800 font-semibold mb-2">Error Details:</p>
+                  <p className="text-red-700 text-sm">{updateResults.error || 'Unknown error occurred'}</p>
+                  {(updateResults.type === 'sync-eatclub' || updateResults.type === 'find-eatclub') && (
+                    <p className="text-red-600 text-xs mt-2">
+                      Tip: The discovery phase uses Puppeteer and can take several minutes. If it times out, try running from the command line:{' '}
+                      <code className="bg-red-200 px-1 rounded">
+                        {updateResults.type === 'find-eatclub' ? 'npm run find:eatclub' : 'npm run sync:eatclub'}
+                      </code>
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1026,6 +1326,7 @@ export default function AdminPage() {
             onRevert={() => {
               fetchRestaurants();
             }}
+            refreshTrigger={changesRefreshTrigger}
           />
         </>
       )}
